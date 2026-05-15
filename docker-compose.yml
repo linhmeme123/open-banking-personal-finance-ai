@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:16
+    container_name: pfai_postgres
+    environment:
+      POSTGRES_USER: pfai
+      POSTGRES_PASSWORD: pfai
+      POSTGRES_DB: pfai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pfai_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+    container_name: pfai_backend
+    environment:
+      DATABASE_URL: postgresql+psycopg2://pfai:pfai@db:5432/pfai
+      APP_ENV: local
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: pfai_frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  pfai_data:
