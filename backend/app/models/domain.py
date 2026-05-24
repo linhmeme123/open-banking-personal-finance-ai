@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -14,6 +14,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
 
     accounts = relationship("Account", back_populates="user")
+    bank_connections = relationship("BankConnection", back_populates="user")
+    budgets = relationship("Budget", back_populates="user")
 
 
 class BankProvider(Base):
@@ -24,6 +26,23 @@ class BankProvider(Base):
     name: Mapped[str] = mapped_column(String(255))
 
     accounts = relationship("Account", back_populates="provider")
+    bank_connections = relationship("BankConnection", back_populates="provider")
+
+
+class BankConnection(Base):
+    __tablename__ = "bank_connections"
+    __table_args__ = (UniqueConstraint("user_id", "provider_id", name="uq_user_provider_connection"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    provider_id: Mapped[int] = mapped_column(ForeignKey("bank_providers.id"))
+    status: Mapped[str] = mapped_column(String(50), default="connected")
+    consent_scope: Mapped[str] = mapped_column(String(255))
+    connected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="bank_connections")
+    provider = relationship("BankProvider", back_populates="bank_connections")
 
 
 class Account(Base):
@@ -50,6 +69,20 @@ class Category(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class Budget(Base):
+    __tablename__ = "budgets"
+    __table_args__ = (UniqueConstraint("user_id", "category", "month", name="uq_user_category_month_budget"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    category: Mapped[str] = mapped_column(String(100), index=True)
+    month: Mapped[str] = mapped_column(String(7), index=True)
+    monthly_limit: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="budgets")
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
 
@@ -73,12 +106,12 @@ class ConsentEvent(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    provider_code: Mapped[str] = mapped_column(String(50))
-    scope: Mapped[str] = mapped_column(String(255))
-    action: Mapped[str] = mapped_column(String(50))  # granted | revoked
+    provider_code: Mapped[str] = mapped_column(String(50))#ngân hàng nào
+    scope: Mapped[str] = mapped_column(String(255))#phạm vi quyền hạn (ví dụ: "accounts:read transactions:read")
+    action: Mapped[str] = mapped_column(String(50))  # granted(cấp) | revoked(thu hồi)
     event_hash: Mapped[str] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
+#VD: user 1 cấp quyền cho ứng dụng truy cập BANK_A
 
 class AiChatMessage(Base):
     __tablename__ = "ai_chat_messages"

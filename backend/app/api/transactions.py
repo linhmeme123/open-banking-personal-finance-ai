@@ -1,18 +1,33 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.security import get_current_user
 from app.db.session import get_db
-from app.models.domain import Transaction
+from app.models.domain import Account, Transaction, User
 
 router = APIRouter()
 
 
 @router.get("")
 def list_transactions(
+    month: str | None = Query(default=None),
     category: str | None = Query(default=None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Transaction).order_by(Transaction.transaction_time.desc())
+    query = (
+        db.query(Transaction)
+        .join(Account)
+        .filter(Account.user_id == current_user.id)
+        .order_by(Transaction.transaction_time.desc())
+    )
+    if month:
+        query = query.filter(Transaction.transaction_time >= f"{month}-01")
+        if month.endswith("-12"):
+            next_month = f"{int(month[:4]) + 1}-01"
+        else:
+            next_month = f"{month[:5]}{int(month[5:]) + 1:02d}"
+        query = query.filter(Transaction.transaction_time < f"{next_month}-01")
     if category:
         query = query.filter(Transaction.category == category)
 

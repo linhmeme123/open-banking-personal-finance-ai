@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.security import get_current_user
 from app.db.session import get_db
-from app.models.domain import ConsentEvent
+from app.models.domain import ConsentEvent, User
 from app.schemas.dto import ConsentCreate
 from app.services.consent_service import create_consent_event
 
@@ -10,10 +11,14 @@ router = APIRouter()
 
 
 @router.post("")
-def create_consent(payload: ConsentCreate, db: Session = Depends(get_db)):
+def create_consent(
+    payload: ConsentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     event = create_consent_event(
         db=db,
-        user_id=payload.user_id,
+        user_id=current_user.id,
         provider_code=payload.provider_code,
         scope=payload.scope,
         action=payload.action,
@@ -29,8 +34,16 @@ def create_consent(payload: ConsentCreate, db: Session = Depends(get_db)):
 
 
 @router.get("")
-def list_consents(db: Session = Depends(get_db)):
-    events = db.query(ConsentEvent).order_by(ConsentEvent.created_at.desc()).all()
+def list_consents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    events = (
+        db.query(ConsentEvent)
+        .filter(ConsentEvent.user_id == current_user.id)
+        .order_by(ConsentEvent.created_at.desc())
+        .all()
+    )
     return [
         {
             "id": event.id,

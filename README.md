@@ -101,7 +101,7 @@ docker compose up --build
 
 Frontend: http://localhost:3000  
 Backend docs: http://localhost:8000/docs  
-PostgreSQL: localhost:5432
+PostgreSQL: localhost:55432
 
 ## 6. Cách chạy thủ công
 
