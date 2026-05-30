@@ -1,51 +1,72 @@
-import base64
+from datetime import datetime, timedelta
+from uuid import uuid4
 import hashlib
-import hmac
-import json
-from typing import Annotated
+import secrets
 
-from fastapi import Depends, Header, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import HTTPException, status
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 from app.core.config import settings
-from app.db.session import get_db
-from app.models.domain import User
 
 
-def create_access_token(user_id: int) -> str:
-    payload = {"sub": user_id}
-    body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode()
-    signature = hmac.new(settings.secret_key.encode(), body.encode(), hashlib.sha256).hexdigest()
-    return f"{body}.{signature}"
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def verify_access_token(token: str) -> int:
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(password, hashed_password)
+
+
+def create_access_token(user_id: int) -> tuple[str, str]:
+    jti = str(uuid4())
+
+    expire = datetime.utcnow() + timedelta(
+        minutes=settings.access_token_expire_minutes,
+    )
+
+    payload = {
+        "sub": str(user_id),
+        "jti": jti,
+        "type": "access",
+        "exp": expire,
+    }
+
+    token = jwt.encode(
+        payload,
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
+
+    return token, jti
+
+
+def decode_token(token: str) -> dict:
     try:
-        body, signature = token.split(".", 1)
-    except ValueError as exc:
-        raise HTTPException(status_code=401, detail="Invalid token") from exc
-
-    expected = hmac.new(settings.secret_key.encode(), body.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(signature, expected):
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    try:
-        payload = json.loads(base64.urlsafe_b64decode(body.encode()).decode())
-        return int(payload["sub"])
-    except (KeyError, ValueError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=401, detail="Invalid token") from exc
+        return jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+        )
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        ) from exc
 
 
-def get_current_user(
-    authorization: Annotated[str | None, Header()] = None,
-    db: Session = Depends(get_db),
-) -> User:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
+def create_refresh_token() -> str:
+    return secrets.token_urlsafe(64)
 
-    user_id = verify_access_token(authorization.removeprefix("Bearer ").strip())
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
 
+def hash_refresh_token(refresh_token: str) -> str:
+    return hashlib.sha256(refresh_token.encode()).hexdigest()
+
+
+def get_refresh_token_expiry() -> datetime:
+    return datetime.utcnow() + timedelta(
+        days=settings.refresh_token_expire_days,
+    )

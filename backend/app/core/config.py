@@ -2,16 +2,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
+    app_name: str = "Open Banking Personal Finance AI"
 
-    app_env: str = "local"
     database_url: str = "postgresql+psycopg2://pfai:pfai@localhost:55432/pfai"
-    cors_origins: str = "http://localhost:3000"
-    secret_key: str = "dev-secret-change-me"
 
-    @property
-    def cors_origins_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+    secret_key: str = "change-this-secret-key"
+    algorithm: str = "HS256"
+
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 30
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
 
 settings = Settings()
