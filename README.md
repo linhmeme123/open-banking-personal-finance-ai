@@ -170,7 +170,7 @@ docker compose up --build
 # URL sau khi chạy:
 # Frontend:         http://localhost:3000
 # Backend Swagger:  http://localhost:8000/docs
-# PostgreSQL:       localhost:55432 (user: postgres, password: postgres)
+# PostgreSQL:       localhost:5432 (user: postgres, password: postgres)
 ```
 
 ---
@@ -190,8 +190,13 @@ source .venv/bin/activate  # Mac/Linux
 # Cài dependencies
 pip install -r requirements.txt
 
-# Chạy database migrations (nếu có)
-# alembic upgrade head
+# ===== DATABASE MIGRATION (Alembic) =====
+
+# Tạo database trước (nếu chưa có)
+# createdb open_banking
+
+# Chạy migration lần đầu (áp dụng tất cả migrations)
+alembic upgrade head
 
 # Chạy backend
 uvicorn app.main:app --reload --port 8000
@@ -199,6 +204,187 @@ uvicorn app.main:app --reload --port 8000
 
 Backend sẽ chạy ở: **http://localhost:8000**  
 Swagger docs: **http://localhost:8000/docs**
+
+---
+
+### 🗂️ Alembic - Database Schema Management
+
+**Alembic** giúp quản lý thay đổi database schema một cách an toàn (version control cho database).
+
+#### **Setup Alembic lần đầu** (đã có sẵn)
+
+```bash
+cd backend
+
+# Nếu chưa cài Alembic
+pip install alembic
+
+# Khởi tạo Alembic folder (chỉ cần 1 lần)
+# alembic init alembic
+```
+
+#### **Workflow: Thay đổi Database Schema**
+
+**Bước 1: Sửa model trong code**
+
+```python
+# filepath: backend/app/models/domain.py
+from sqlalchemy import Column, String, Integer
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+    
+    id = Column(Integer, primary_key=True)
+    description = Column(String(500))
+    # Thêm cột mới
+    merchant_category = Column(String(100), nullable=True)  # ← THÊM DÒNG NÀY
+```
+
+**Bước 2: Tạo migration file (tự động tạo từ model)**
+
+```bash
+cd backend
+
+# Tạo migration file mới (Alembic tự detect thay đổi)
+alembic revision --autogenerate -m "Add merchant_category to transactions"
+
+# ✅ Kết quả: File mới được tạo trong `alembic/versions/`
+# Ví dụ: 2026_05_24_add_merchant_category.py
+```
+
+**Bước 3: Kiểm tra migration file (QUAN TRỌNG!)**
+
+```bash
+# Mở file vừa tạo để xem
+cat alembic/versions/2026_05_24_add_merchant_category.py
+```
+
+Nội dung sẽ giống như:
+```python
+# filepath: backend/alembic/versions/2026_05_24_add_merchant_category.py
+from alembic import op
+import sqlalchemy as sa
+
+def upgrade() -> None:
+    # Chạy khi apply migration
+    op.add_column('transactions', sa.Column('merchant_category', sa.String(100), nullable=True))
+
+def downgrade() -> None:
+    # Chạy khi rollback migration
+    op.drop_column('transactions', 'merchant_category')
+```
+
+**⚠️ Luôn kiểm tra migration file trước khi apply!** Đôi khi Alembic tạo không hoàn toàn đúng.
+
+**Bước 4: Apply migration lên database**
+
+```bash
+# Apply migration mới nhất
+alembic upgrade head
+
+# ✅ Kết quả: Cột `merchant_category` được thêm vào table `transactions`
+```
+
+**Bước 5: Kiểm tra database**
+
+```bash
+# Kết nối database để xem schema
+psql -U postgres -d open_banking
+
+# Query để xem columns trong table
+\d transactions
+
+# Hoặc dùng SQL
+SELECT column_name, data_type FROM information_schema.columns 
+WHERE table_name = 'transactions';
+```
+
+#### **Các lệnh Alembic thường dùng**
+
+| Lệnh | Mục đích |
+|------|---------|
+| `alembic upgrade head` | Apply tất cả migrations chưa áp dụng |
+| `alembic downgrade -1` | Rollback migration gần nhất |
+| `alembic current` | Xem current migration version |
+| `alembic history` | Xem tất cả migrations |
+| `alembic revision --autogenerate -m "message"` | Tạo migration mới từ model changes |
+| `alembic merge` | Merge 2 migration branches (nếu conflict) |
+
+#### **Ví dụ thực tế: Thêm cột `last_sync_at` vào BankConnection**
+
+**Bước 1: Sửa model**
+```python
+# filepath: backend/app/models/domain.py
+from datetime import datetime
+
+class BankConnection(Base):
+    __tablename__ = "bank_connections"
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer)
+    provider_code = Column(String(50))
+    # Thêm cột này
+    last_sync_at = Column(DateTime, default=datetime.utcnow, nullable=True)
+```
+
+**Bước 2: Tạo migration**
+```bash
+alembic revision --autogenerate -m "Add last_sync_at to bank_connections"
+```
+
+**Bước 3: Kiểm tra file**
+```bash
+cat alembic/versions/2026_05_24_add_last_sync_at.py
+# Xem xem migrate file có đúng không
+```
+
+**Bước 4: Apply migration**
+```bash
+alembic upgrade head
+```
+
+**Bước 5: Xác nhận**
+```bash
+alembic current
+# Output: e12345abcd (hash của migration vừa apply)
+```
+
+#### **Best Practices**
+
+✅ **Nên làm:**
+- Tạo 1 migration cho 1 thay đổi logic
+- Luôn kiểm tra migration file trước apply
+- Commit migration file lên Git cùng code
+- Viết message rõ ràng: `"Add user_id index to transactions"`
+
+❌ **Không nên làm:**
+- Chỉnh sửa migration file đã apply
+- Apply multiple migrations cùng lúc mà không kiểm tra
+- Xóa migration file cũ (sẽ vỡ version history)
+- Manual sửa database mà không qua Alembic
+
+#### **Database Reset (Clean Slate)**
+
+Nếu muốn xóa tất cả migrations và bắt đầu lại:
+
+```bash
+# ⚠️ CẬP NHẬT: Chỉ nên làm trong development!
+
+# Downgrade tất cả migrations
+alembic downgrade base
+
+# Hoặc xóa database và tạo lại
+dropdb open_banking
+createdb open_banking
+
+# Áp dụng lại tất cả migrations
+alembic upgrade head
+```
+
+---
 
 ### Frontend (Terminal 2)
 
@@ -226,6 +412,9 @@ Nếu không dùng Docker:
 
 # Khởi động PostgreSQL
 postgres -D /usr/local/var/postgres
+
+# Hoặc tạo database nếu chưa có
+createdb open_banking
 
 # Hoặc dùng Docker chỉ cho DB
 docker run --name postgres_open_banking \
@@ -291,7 +480,11 @@ Response: {
     "Others": 11500000
   },
   "recurring_subscriptions": [
-    {"name": "Netflix", "amount": 150000, "frequency": "monthly"}
+    {
+      "name": "Netflix",
+      "amount": 150000,
+      "frequency": "monthly"
+    }
   ]
 }
 ```

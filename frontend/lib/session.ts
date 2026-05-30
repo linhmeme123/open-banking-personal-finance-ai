@@ -10,6 +10,7 @@ export type DemoUser = {
 
 export type DemoSession = {
   access_token: string;
+  refresh_token?: string;
   token_type: string;
   user: DemoUser;
 };
@@ -38,7 +39,19 @@ export function clearSession() {
 }
 
 export async function demoLogin(): Promise<DemoSession> {
-  const session = await apiPost<DemoSession>("/api/auth/demo-login");
+  const credentials = {
+    email: "demo@example.com",
+    password: "demo-password",
+  };
+  let session: DemoSession;
+  try {
+    session = await apiPost<DemoSession>("/api/auth/signup", {
+      full_name: "Demo User",
+      ...credentials,
+    });
+  } catch {
+    session = await apiPost<DemoSession>("/api/auth/login", credentials);
+  }
   storeSession(session);
   return session;
 }

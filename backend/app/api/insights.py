@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.domain import User
+from app.models.user import User
 from app.services.insight_service import get_category_breakdown, get_monthly_summary, get_recurring_payments
 
 router = APIRouter()

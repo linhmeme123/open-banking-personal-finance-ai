@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models.domain import ConsentEvent
+from app.models.consent import ConsentEvent
 
 
 def create_consent_event(db: Session, user_id: int, provider_code: str, scope: str, action: str) -> ConsentEvent:

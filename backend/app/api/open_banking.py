@@ -3,10 +3,13 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.domain import Account, BankConnection, BankProvider, Transaction, User
-from app.schemas.dto import ProviderConnectRequest, SyncRequest
+from app.models.account import Account
+from app.models.bank import BankConnection, BankProvider
+from app.models.transaction import Transaction
+from app.models.user import User
+from app.schemas.bank import ProviderConnectRequest, SyncRequest
 from app.services.consent_service import create_consent_event
 from app.services.open_banking_mock import get_mock_account, get_mock_providers, get_mock_transactions
 from app.ai.categorizer import categorize_transaction

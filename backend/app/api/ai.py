@@ -3,13 +3,16 @@ from sqlalchemy.orm import Session
 
 from app.ai.categorizer import categorize_transaction
 from app.ai.coach import answer_personal_finance_question, persist_chat_turn
-from app.core.security import get_current_user
+from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.domain import Account, AiChatMessage, Transaction, User
-from app.schemas.dto import AiChatMessageOut, CategorizeRequest, CategorizeResponse, ChatRequest, ChatResponse
+from app.models.account import Account
+from app.models.chat_message import AiChatMessage
+from app.models.transaction import Transaction
+from app.models.user import User
+from app.schemas.chat_message import AiChatMessageOut, ChatRequest, ChatResponse
+from app.schemas.transaction import CategorizeRequest, CategorizeResponse
 
 router = APIRouter()
-
 
 @router.post("/categorize", response_model=CategorizeResponse)
 def categorize(

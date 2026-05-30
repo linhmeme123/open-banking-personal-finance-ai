@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.domain import Account, Transaction, User
+from app.models.account import Account
+from app.models.transaction import Transaction
+from app.models.user import User
 
 router = APIRouter()
 

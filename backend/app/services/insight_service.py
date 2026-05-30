@@ -1,7 +1,9 @@
 from decimal import Decimal
 from sqlalchemy.orm import Session
 
-from app.models.domain import Account, Budget, Transaction
+from app.models.account import Account
+from app.models.budget import Budget
+from app.models.transaction import Transaction
 
 
 def get_user_transactions(db: Session, user_id: int, month: str | None = None):

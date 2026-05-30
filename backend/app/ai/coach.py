@@ -1,7 +1,8 @@
 from decimal import Decimal
 from sqlalchemy.orm import Session
 
-from app.models.domain import AiChatMessage, Transaction
+from app.models.chat_message import AiChatMessage
+from app.models.transaction import Transaction
 from app.services.insight_service import get_budget_status, get_recurring_payments
 
 
