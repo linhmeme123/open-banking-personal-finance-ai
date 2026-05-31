@@ -44,8 +44,8 @@ services:
       backend:
         condition: service_started
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - ./frontend:/workspace
+      - /workspace/node_modules
 
 volumes:
   pfai_data:

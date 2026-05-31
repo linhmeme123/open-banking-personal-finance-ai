@@ -2,40 +2,60 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 
+DEFAULT_SCOPES = ["accounts:read", "transactions:read", "balance:read"]
+
+
+PROVIDERS = [
+    {"code": "TIMO", "name": "Timo", "type": "digital_bank", "logo_url": None, "status": "available"},
+    {"code": "CAKE", "name": "Cake", "type": "digital_bank", "logo_url": None, "status": "available"},
+    {"code": "MOMO", "name": "MoMo", "type": "fintech", "logo_url": None, "status": "available"},
+    {"code": "ZALOPAY", "name": "ZaloPay", "type": "fintech", "logo_url": None, "status": "available"},
+    {"code": "VIETCOMBANK", "name": "Vietcombank", "type": "traditional_bank", "logo_url": None, "status": "available"},
+    {"code": "TECHCOMBANK", "name": "Techcombank", "type": "traditional_bank", "logo_url": None, "status": "available"},
+    {"code": "MB_BANK", "name": "MB Bank", "type": "traditional_bank", "logo_url": None, "status": "coming_soon"},
+]
+
+
 def get_mock_providers():
+    return [{**provider, "supported_scopes": DEFAULT_SCOPES} for provider in PROVIDERS]
+
+
+def get_mock_provider(provider_code: str):
+    return next((provider for provider in get_mock_providers() if provider["code"] == provider_code), None)
+
+
+def get_mock_accounts(provider_code: str):
+    provider_accounts = {
+        "TIMO": [
+            ("Timo Spend Account", "checking", "18450000"),
+            ("Timo Goal Save", "savings", "6200000"),
+        ],
+        "CAKE": [("Cake Everyday Account", "checking", "12750000")],
+        "MOMO": [("MoMo Wallet", "wallet", "2850000")],
+        "ZALOPAY": [("ZaloPay Wallet", "wallet", "1740000")],
+        "VIETCOMBANK": [
+            ("Vietcombank Current Account", "checking", "31800000"),
+            ("Vietcombank Savings", "savings", "85000000"),
+        ],
+        "TECHCOMBANK": [
+            ("Techcombank Everyday Account", "checking", "26800000"),
+            ("Techcombank Savings", "savings", "54000000"),
+        ],
+        "MB_BANK": [("MB Bank Current Account", "checking", "22500000")],
+    }
     return [
-        {"code": "BANK_A", "name": "Bank A Sandbox"},
-        {"code": "BANK_B", "name": "Bank B Sandbox"},
-        {"code": "EWALLET_X", "name": "E-wallet X Sandbox"},
+        {
+            "account_name": name,
+            "account_type": account_type,
+            "currency": "VND",
+            "balance": Decimal(balance),
+        }
+        for name, account_type, balance in provider_accounts[provider_code]
     ]
 
 
-def get_mock_account(provider_code: str):
-    accounts = {
-        "BANK_A": {
-            "account_name": "Bank A Main Checking",
-            "account_type": "checking",
-            "currency": "VND",
-            "balance": Decimal("15000000"),
-        },
-        "BANK_B": {
-            "account_name": "Bank B Savings",
-            "account_type": "savings",
-            "currency": "VND",
-            "balance": Decimal("42000000"),
-        },
-        "EWALLET_X": {
-            "account_name": "E-wallet X",
-            "account_type": "wallet",
-            "currency": "VND",
-            "balance": Decimal("2500000"),
-        },
-    }
-    return accounts[provider_code]
-
-
-def get_mock_transactions(account_id: int, provider_code: str = "BANK_A"):
-    now = datetime(2026, 5, 24, 12, 0, 0)
+def get_mock_transactions(account_id: int, provider_code: str):
+    now = datetime.utcnow().replace(microsecond=0)
     suffix = provider_code.lower()
     return [
         {
@@ -62,7 +82,7 @@ def get_mock_transactions(account_id: int, provider_code: str = "BANK_A"):
             "account_id": account_id,
             "external_id": f"{suffix}-{account_id}-003",
             "transaction_time": now - timedelta(days=3),
-            "description": "Salary May",
+            "description": "Salary Payroll",
             "merchant_name": "Company Payroll",
             "amount": Decimal("12000000"),
             "currency": "VND",
@@ -81,6 +101,26 @@ def get_mock_transactions(account_id: int, provider_code: str = "BANK_A"):
         {
             "account_id": account_id,
             "external_id": f"{suffix}-{account_id}-005",
+            "transaction_time": now - timedelta(days=5),
+            "description": "Internet bill",
+            "merchant_name": "VNPT Internet",
+            "amount": Decimal("-220000"),
+            "currency": "VND",
+            "direction": "expense",
+        },
+        {
+            "account_id": account_id,
+            "external_id": f"{suffix}-{account_id}-006",
+            "transaction_time": now - timedelta(days=6),
+            "description": "Pharmacy purchase",
+            "merchant_name": "Long Chau Pharmacy",
+            "amount": Decimal("-180000"),
+            "currency": "VND",
+            "direction": "expense",
+        },
+        {
+            "account_id": account_id,
+            "external_id": f"{suffix}-{account_id}-007",
             "transaction_time": now - timedelta(days=31),
             "description": "Netflix subscription",
             "merchant_name": "Netflix",
@@ -90,7 +130,7 @@ def get_mock_transactions(account_id: int, provider_code: str = "BANK_A"):
         },
         {
             "account_id": account_id,
-            "external_id": f"{suffix}-{account_id}-006",
+            "external_id": f"{suffix}-{account_id}-008",
             "transaction_time": now - timedelta(days=1),
             "description": "Netflix subscription",
             "merchant_name": "Netflix",

@@ -19,9 +19,17 @@ if not user:
         )
     )
 
-provider = db.query(BankProvider).filter(BankProvider.code == "BANK_A").first()
+provider = db.query(BankProvider).filter(BankProvider.code == "TIMO").first()
 if not provider:
-    db.add(BankProvider(code="BANK_A", name="Bank A Sandbox"))
+    db.add(
+        BankProvider(
+            code="TIMO",
+            name="Timo",
+            provider_type="digital_bank",
+            status="available",
+            supported_scopes=["accounts:read", "transactions:read", "balance:read"],
+        )
+    )
 
 db.commit()
 db.close()

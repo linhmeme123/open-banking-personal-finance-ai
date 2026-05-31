@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -12,6 +12,10 @@ class BankProvider(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
+    provider_type: Mapped[str] = mapped_column("type", String(50), default="traditional_bank")
+    logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="available")
+    supported_scopes: Mapped[list[str]] = mapped_column(JSON, default=list)
 
     accounts = relationship("Account", back_populates="provider")
     bank_connections = relationship("BankConnection", back_populates="provider")

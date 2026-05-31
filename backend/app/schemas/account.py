@@ -11,4 +11,6 @@ class AccountOut(BaseModel):
     account_type: str
     currency: str
     balance: Decimal
+    provider_code: str
     provider_name: str
+    provider_type: str

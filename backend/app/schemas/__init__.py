@@ -9,6 +9,7 @@ from app.schemas.auth import (
 from app.schemas.bank import (
     BankConnectionOut,
     ProviderConnectRequest,
+    ProviderOut,
     SyncRequest,
 )
 from app.schemas.budget import BudgetCreate, BudgetOut
@@ -20,6 +21,8 @@ from app.schemas.chat_message import (
 from app.schemas.consent import ConsentCreate, ConsentOut
 from app.schemas.transaction import (
     CategorizeRequest,
+    CategorizeAllRequest,
+    CategorizeAllResponse,
     CategorizeResponse,
     TransactionOut,
 )

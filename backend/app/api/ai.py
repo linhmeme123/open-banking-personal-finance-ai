@@ -1,16 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.ai.categorizer import categorize_transaction
 from app.ai.coach import answer_personal_finance_question, persist_chat_turn
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.account import Account
 from app.models.chat_message import AiChatMessage
-from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.chat_message import AiChatMessageOut, ChatRequest, ChatResponse
 from app.schemas.transaction import CategorizeRequest, CategorizeResponse
+from app.services.transaction_service import categorize_user_transaction
 
 router = APIRouter()
 
@@ -20,25 +18,7 @@ def categorize(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tx = (
-        db.query(Transaction)
-        .join(Account)
-        .filter(Transaction.id == payload.transaction_id, Account.user_id == current_user.id)
-        .first()
-    )
-    if not tx:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-
-    category, confidence = categorize_transaction(tx.description, tx.merchant_name)
-    tx.category = category
-    tx.category_confidence = confidence
-    db.commit()
-
-    return CategorizeResponse(
-        transaction_id=tx.id,
-        category=category,
-        confidence=confidence,
-    )
+    return CategorizeResponse(**categorize_user_transaction(db, current_user.id, payload.transaction_id))
 
 
 @router.post("/chat", response_model=ChatResponse)

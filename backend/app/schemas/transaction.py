@@ -16,6 +16,10 @@ class TransactionOut(BaseModel):
     direction: str
     category: str | None
     category_confidence: Decimal | None
+    account_name: str
+    provider_code: str
+    provider_name: str
+    provider_type: str
 
 
 class CategorizeRequest(BaseModel):
@@ -26,3 +30,12 @@ class CategorizeResponse(BaseModel):
     transaction_id: int
     category: str
     confidence: float
+
+
+class CategorizeAllRequest(BaseModel):
+    provider_code: str | None = None
+
+
+class CategorizeAllResponse(BaseModel):
+    categorized_count: int
+    transactions: list[CategorizeResponse]

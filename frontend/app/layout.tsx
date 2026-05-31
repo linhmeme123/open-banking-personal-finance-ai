@@ -1,18 +1,17 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Nav } from "@/components/Nav";
+import { AuthProvider } from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
-  title: "Open Banking Personal Finance AI",
-  description: "Portfolio fintech project with open banking and AI coaching",
+  title: "Velora Finance",
+  description: "Open banking personal finance insights with an AI coach",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="vi">
+    <html lang="en">
       <body>
-        <Nav />
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

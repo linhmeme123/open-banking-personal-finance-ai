@@ -1,112 +1,89 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { apiGet } from "@/lib/api";
-import { DemoSession, demoLogin, getStoredSession } from "@/lib/session";
+import { ArrowRight, Bot, Landmark, LineChart, ShieldCheck } from "lucide-react";
+import { Brand } from "@/components/Brand";
+import { useAuth } from "@/components/AuthProvider";
 
-type Account = {
-  id: number;
-  account_name: string;
-  balance: number;
-  currency: string;
-  provider_name: string;
-};
+const benefits = [
+  { icon: Landmark, title: "One view of every account", description: "Connect banking data and keep balances in focus." },
+  { icon: LineChart, title: "Know where money moves", description: "See income, expenses, budgets, and spending patterns." },
+  { icon: Bot, title: "Ask your AI coach", description: "Turn synced activity into practical financial decisions." },
+];
 
-export default function HomePage() {
-  const [session, setSession] = useState<DemoSession | null>(null);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const stored = getStoredSession();
-    setSession(stored);
-    if (stored) {
-      apiGet<Account[]>("/api/accounts", stored.access_token)
-        .then(setAccounts)
-        .catch(() => setAccounts([]));
-    }
-  }, []);
-
-  async function signIn() {
-    setLoading(true);
-    try {
-      const nextSession = await demoLogin();
-      setSession(nextSession);
-      const nextAccounts = await apiGet<Account[]>("/api/accounts", nextSession.access_token);
-      setAccounts(nextAccounts);
-    } finally {
-      setLoading(false);
-    }
-  }
+export default function LandingPage() {
+  const { status } = useAuth();
+  const authenticated = status === "authenticated";
 
   return (
-    <div className="grid gap-6">
-      <section className="rounded-lg border bg-white p-6 shadow-sm">
-        <div className="grid gap-6 md:grid-cols-[1.4fr_1fr] md:items-center">
-          <div>
-            <p className="mb-3 text-sm font-semibold uppercase text-slate-500">
-              Open Banking Personal Finance AI
-            </p>
-            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-              Quản lý dòng tiền cá nhân từ sandbox banking và AI coach.
-            </h1>
-            <p className="mt-4 max-w-2xl text-slate-600">
-              Flow demo gồm đăng nhập, kết nối ngân hàng, consent audit, sync giao dịch,
-              dashboard, budget, insight và chat tài chính.
-            </p>
-          </div>
+    <main className="min-h-screen bg-[#08070b]">
+      <section className="relative flex min-h-[88vh] flex-col overflow-hidden border-b border-white/[0.08]">
+        <img
+          alt="Velora Finance dashboard preview"
+          className="absolute inset-0 h-full w-full object-cover object-[58%_center] opacity-70"
+          src="/images/fintech-hero.png"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#08070b] via-[#08070b]/90 to-[#08070b]/25" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#08070b] via-transparent to-[#08070b]/30" />
 
-          <div className="rounded-lg border bg-slate-50 p-4">
-            {session ? (
-              <div className="grid gap-3">
-                <div>
-                  <p className="text-sm text-slate-500">Signed in as</p>
-                  <p className="font-semibold">{session.user.email}</p>
-                </div>
-                <p className="text-sm text-slate-600">
-                  {accounts.length > 0
-                    ? `${accounts.length} account connected`
-                    : "No account synced yet"}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Link className="rounded-lg bg-slate-900 px-4 py-2 text-white" href="/connect">
-                    Connect bank
-                  </Link>
-                  <Link className="rounded-lg border bg-white px-4 py-2" href="/dashboard">
-                    Dashboard
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                <p className="text-sm text-slate-600">Start with the demo banking identity.</p>
-                <button
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:opacity-60"
-                  disabled={loading}
-                  onClick={signIn}
-                >
-                  {loading ? "Signing in..." : "Demo sign in"}
-                </button>
-              </div>
+        <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
+          <Brand />
+          <div className="flex items-center gap-2">
+            {!authenticated && (
+              <Link className="hidden px-3 py-2 text-sm font-semibold text-white/60 hover:text-white sm:block" href="/login">
+                Log in
+              </Link>
             )}
+            <Link className="button-primary" href={authenticated ? "/app" : "/signup"}>
+              {authenticated ? "Open dashboard" : "Sign up"}
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
+        </header>
+
+        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center px-5 pb-16 pt-10 sm:px-8">
+          <div className="max-w-2xl">
+            <p className="eyebrow">Open banking, personally understood</p>
+            <h1 className="mt-5 text-5xl font-semibold leading-[1.06] text-white sm:text-6xl lg:text-7xl">
+              Velora Finance
+            </h1>
+            <p className="mt-6 max-w-xl text-base leading-7 text-white/58 sm:text-lg">
+              A connected personal finance workspace for clearer cashflow, smarter budgets, and AI-guided next steps.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link className="button-primary px-5 py-3" href={authenticated ? "/app" : "/login"}>
+                {authenticated ? "Go to overview" : "Log in"}
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+              {!authenticated && (
+                <Link className="button-secondary px-5 py-3" href="/signup">
+                  Create account
+                </Link>
+              )}
+            </div>
+            <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-xs font-semibold uppercase text-white/38">
+              <span className="inline-flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-300" aria-hidden="true" />
+                Secure consent
+              </span>
+              <span>Connected insights</span>
+              <span>AI coaching</span>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-4">
-        {[
-          ["Connect", "Choose sandbox provider and grant consent.", "/connect"],
-          ["Sync", "Import account and transaction data.", "/connect"],
-          ["Analyze", "Review cashflow, budgets, and recurring payments.", "/insights"],
-          ["Ask AI", "Chat with answers grounded in your data.", "/chat"],
-        ].map(([title, desc, href]) => (
-          <Link key={title} href={href} className="rounded-lg border bg-white p-5 shadow-sm hover:border-slate-400">
-            <h2 className="font-semibold">{title}</h2>
-            <p className="mt-2 text-sm text-slate-600">{desc}</p>
-          </Link>
-        ))}
+      <section className="border-b border-white/[0.08] bg-[#0b090e]">
+        <div className="mx-auto grid max-w-7xl gap-px bg-white/[0.08] sm:grid-cols-3">
+          {benefits.map(({ icon: Icon, title, description }) => (
+            <div className="bg-[#0b090e] px-6 py-7 sm:px-8" key={title}>
+              <Icon className="h-5 w-5 text-pink-300" aria-hidden="true" />
+              <h2 className="mt-4 text-sm font-semibold text-white">{title}</h2>
+              <p className="mt-2 text-sm leading-6 text-white/42">{description}</p>
+            </div>
+          ))}
+        </div>
       </section>
-    </div>
+    </main>
   );
 }

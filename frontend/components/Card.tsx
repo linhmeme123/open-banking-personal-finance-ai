@@ -1,11 +1,17 @@
 import { ReactNode } from "react";
 
-export function Card({ title, children }: { title: string; children: ReactNode }) {
+export function Card({
+  title,
+  children,
+  className = "",
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <section className="rounded-lg border bg-white p-5 shadow-sm">
-      <h2 className="mb-3 text-sm font-semibold uppercase text-slate-500">
-        {title}
-      </h2>
+    <section className={`glass-panel p-5 ${className}`}>
+      <h2 className="mb-4 text-xs font-semibold uppercase text-white/42">{title}</h2>
       {children}
     </section>
   );
