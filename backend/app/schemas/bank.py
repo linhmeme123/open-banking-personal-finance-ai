@@ -9,7 +9,7 @@ class ProviderConnectRequest(BaseModel):
 
 
 class SyncRequest(BaseModel):
-    provider_code: str = "TIMO"
+    provider_code: str = "VPBANK_MOCK"
 
 
 class ProviderOut(BaseModel):

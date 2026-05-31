@@ -15,7 +15,7 @@ export const TRANSACTION_CATEGORIES = [
   "unknown",
 ] as const;
 
-export type ProviderType = "digital_bank" | "fintech" | "traditional_bank";
+export type ProviderType = "mock_bank" | "sandbox" | "real_partner";
 
 export type BankProvider = {
   code: string;
@@ -135,4 +135,76 @@ export function categorizeUncategorized(providerCode = "") {
   return apiPost<{ categorized_count: number }>("/api/transactions/categorize-all", {
     provider_code: providerCode || null,
   });
+}
+
+export type MockBankAccount = {
+  external_account_id: string;
+  account_name: string;
+  account_type: string;
+  currency: string;
+  balance: number;
+};
+
+export type MockBankTransaction = {
+  external_transaction_id: string;
+  external_account_id: string;
+  transaction_time: string;
+  description: string;
+  merchant_name: string | null;
+  amount: number;
+  currency: string;
+  direction: "income" | "expense";
+};
+
+const publicApi = { auth: false };
+
+export function getMockBankProviders() {
+  return apiGet<BankProvider[]>("/api/mock-bank/providers", undefined, publicApi);
+}
+
+export function getMockBankAccounts(providerCode: string) {
+  return apiGet<MockBankAccount[]>(`/api/mock-bank/accounts${buildQuery({ provider_code: providerCode })}`, undefined, publicApi);
+}
+
+export function createMockBankAccount(providerCode: string, accountName: string) {
+  return apiPost<MockBankAccount>("/api/mock-bank/accounts", {
+    provider_code: providerCode,
+    account_name: accountName,
+    account_type: "checking",
+    currency: "VND",
+    balance: 0,
+  }, undefined, publicApi);
+}
+
+export function getMockBankTransactions(providerCode: string, externalAccountId = "") {
+  return apiGet<MockBankTransaction[]>(
+    `/api/mock-bank/transactions${buildQuery({ provider_code: providerCode, external_account_id: externalAccountId })}`,
+    undefined,
+    publicApi,
+  );
+}
+
+export function createMockBankTransaction(body: {
+  provider_code: string;
+  external_account_id: string;
+  description: string;
+  merchant_name: string;
+  amount: number;
+  direction: string;
+}) {
+  return apiPost<MockBankTransaction>("/api/mock-bank/transactions", body, undefined, publicApi);
+}
+
+export function generateMockBankTransaction(providerCode: string, externalAccountId: string) {
+  return apiPost<MockBankTransaction>("/api/mock-bank/transactions/generate", {
+    provider_code: providerCode,
+    external_account_id: externalAccountId,
+  }, undefined, publicApi);
+}
+
+export function sendMockBankWebhook(providerCode: string, externalTransactionId: string) {
+  return apiPost<{ status: string; transactions_added: number }>("/api/mock-bank/webhooks/send", {
+    provider_code: providerCode,
+    external_transaction_id: externalTransactionId,
+  }, undefined, publicApi);
 }

@@ -2,14 +2,14 @@ import { Building2, Landmark, Loader2, RefreshCw, ShieldCheck, Smartphone } from
 import { BankConnection, BankProvider, ProviderType } from "@/lib/finance";
 
 const TYPE_LABELS: Record<ProviderType, string> = {
-  digital_bank: "Digital bank",
-  fintech: "Fintech wallet",
-  traditional_bank: "Traditional bank",
+  mock_bank: "Mock bank",
+  sandbox: "Public sandbox",
+  real_partner: "Real partner",
 };
 
 function ProviderIcon({ type }: { type: ProviderType }) {
-  if (type === "fintech") return <Smartphone className="h-5 w-5" aria-hidden="true" />;
-  if (type === "traditional_bank") return <Landmark className="h-5 w-5" aria-hidden="true" />;
+  if (type === "sandbox") return <Smartphone className="h-5 w-5" aria-hidden="true" />;
+  if (type === "real_partner") return <Landmark className="h-5 w-5" aria-hidden="true" />;
   return <Building2 className="h-5 w-5" aria-hidden="true" />;
 }
 
@@ -43,7 +43,7 @@ export function BankProviderCard({
       <p className="mt-5 text-[11px] font-semibold uppercase text-pink-200/65">{TYPE_LABELS[provider.type]}</p>
       <h3 className="mt-1 text-base font-semibold text-white">{provider.name}</h3>
       <p className="mt-2 text-sm leading-6 text-white/42">
-        {connection ? "Consent active. Sync to refresh balances and transaction activity." : "Secure sandbox connection with scoped data access."}
+        {connection ? "Consent active. Sync to refresh balances and transaction activity." : "Connect through the provider adapter with scoped data access."}
       </p>
 
       <div className="mt-auto pt-5">

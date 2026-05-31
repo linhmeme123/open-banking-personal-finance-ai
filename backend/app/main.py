@@ -9,8 +9,10 @@ from app.api import (
     budgets,
     consents,
     insights,
+    mock_bank,
     open_banking,
     transactions,
+    webhooks,
 )
 from app.core.config import settings
 from app.db.session import Base, engine
@@ -40,6 +42,8 @@ app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
 app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
 app.include_router(insights.router, prefix="/api/insights", tags=["insights"])
 app.include_router(open_banking.router, prefix="/api/open-banking", tags=["open-banking"])
+app.include_router(mock_bank.router, prefix="/api/mock-bank", tags=["mock-bank"])
+app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 app.include_router(consents.router, prefix="/api/consents", tags=["consents"])
 app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])

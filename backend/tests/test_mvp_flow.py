@@ -37,6 +37,9 @@ class MvpFlowTest(unittest.TestCase):
     def setUp(self):
         self.base.metadata.drop_all(bind=self.engine)
         self.base.metadata.create_all(bind=self.engine)
+        from app.integrations.banking.fake_bank_store import reset_store
+
+        reset_store()
 
     def auth_headers(self):
         payload = {
@@ -72,24 +75,24 @@ class MvpFlowTest(unittest.TestCase):
         connected = self.client.post(
             "/api/open-banking/connect",
             headers=headers,
-            json={"provider_code": "TIMO", "scope": "accounts:read transactions:read"},
+            json={"provider_code": "VPBANK_MOCK", "scope": "accounts:read transactions:read"},
         )
         self.assertEqual(connected.status_code, 200)
         self.assertEqual(connected.json()["status"], "connected")
 
         connections = self.client.get("/api/open-banking/connections", headers=headers)
         self.assertEqual(connections.status_code, 200)
-        self.assertEqual(connections.json()[0]["provider_code"], "TIMO")
+        self.assertEqual(connections.json()[0]["provider_code"], "VPBANK_MOCK")
 
         consents = self.client.get("/api/consents", headers=headers)
         self.assertEqual(consents.status_code, 200)
-        self.assertEqual(consents.json()[0]["provider_code"], "TIMO")
+        self.assertEqual(consents.json()[0]["provider_code"], "VPBANK_MOCK")
         self.assertEqual(consents.json()[0]["action"], "granted")
 
         first_sync = self.client.post(
             "/api/open-banking/sync",
             headers=headers,
-            json={"provider_code": "TIMO"},
+            json={"provider_code": "VPBANK_MOCK"},
         )
         self.assertEqual(first_sync.status_code, 200)
         self.assertGreater(first_sync.json()["created_transactions"], 0)
@@ -97,21 +100,21 @@ class MvpFlowTest(unittest.TestCase):
         second_sync = self.client.post(
             "/api/open-banking/sync",
             headers=headers,
-            json={"provider_code": "TIMO"},
+            json={"provider_code": "VPBANK_MOCK"},
         )
         self.assertEqual(second_sync.status_code, 200)
         self.assertEqual(second_sync.json()["created_transactions"], 0)
 
         accounts = self.client.get("/api/accounts", headers=headers)
         self.assertEqual(accounts.status_code, 200)
-        self.assertEqual(len(accounts.json()), 2)
-        self.assertTrue(all(account["provider_code"] == "TIMO" for account in accounts.json()))
+        self.assertEqual(len(accounts.json()), 1)
+        self.assertTrue(all(account["provider_code"] == "VPBANK_MOCK" for account in accounts.json()))
 
-        transactions = self.client.get("/api/transactions?provider_code=TIMO&category=food", headers=headers)
+        transactions = self.client.get("/api/transactions?provider_code=VPBANK_MOCK&category=food", headers=headers)
         self.assertEqual(transactions.status_code, 200)
         self.assertTrue(transactions.json())
         self.assertTrue(all(tx["category"] == "food" for tx in transactions.json()))
-        self.assertTrue(all(tx["provider_code"] == "TIMO" for tx in transactions.json()))
+        self.assertTrue(all(tx["provider_code"] == "VPBANK_MOCK" for tx in transactions.json()))
 
         categorized = self.client.post(
             "/api/transactions/categorize",
@@ -126,9 +129,9 @@ class MvpFlowTest(unittest.TestCase):
         self.client.post(
             "/api/open-banking/connect",
             headers=headers,
-            json={"provider_code": "TIMO", "scope": "accounts:read transactions:read"},
+            json={"provider_code": "VPBANK_MOCK", "scope": "accounts:read transactions:read"},
         )
-        self.client.post("/api/open-banking/sync", headers=headers, json={"provider_code": "TIMO"})
+        self.client.post("/api/open-banking/sync", headers=headers, json={"provider_code": "VPBANK_MOCK"})
 
         budget = self.client.post(
             "/api/budgets",
@@ -166,6 +169,31 @@ class MvpFlowTest(unittest.TestCase):
         history = self.client.get("/api/ai/chat/history", headers=headers)
         self.assertEqual(history.status_code, 200)
         self.assertEqual([item["role"] for item in history.json()], ["user", "assistant"])
+
+    def test_mock_bank_webhook_uses_provider_adapter(self):
+        headers = self.auth_headers()
+        self.client.post(
+            "/api/open-banking/connect",
+            headers=headers,
+            json={"provider_code": "VPBANK_MOCK"},
+        )
+        self.client.post("/api/open-banking/sync", headers=headers, json={"provider_code": "VPBANK_MOCK"})
+        accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
+
+        generated = self.client.post(
+            "/api/mock-bank/transactions/generate",
+            json={"provider_code": "VPBANK_MOCK", "external_account_id": accounts[0]["external_account_id"]},
+        )
+        self.assertEqual(generated.status_code, 200)
+        webhook = self.client.post(
+            "/api/mock-bank/webhooks/send",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_transaction_id": generated.json()["external_transaction_id"],
+            },
+        )
+        self.assertEqual(webhook.status_code, 200)
+        self.assertEqual(webhook.json()["transactions_added"], 1)
 
 
 if __name__ == "__main__":

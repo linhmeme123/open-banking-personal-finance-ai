@@ -34,7 +34,7 @@ def connect(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return connect_provider(db, current_user.id, payload.provider_code, payload.scope)
+    return connect_provider(db, current_user, payload.provider_code, payload.scope)
 
 
 @router.post("/sync")

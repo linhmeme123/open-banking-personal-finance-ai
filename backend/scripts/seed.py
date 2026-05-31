@@ -19,13 +19,13 @@ if not user:
         )
     )
 
-provider = db.query(BankProvider).filter(BankProvider.code == "TIMO").first()
+provider = db.query(BankProvider).filter(BankProvider.code == "VPBANK_MOCK").first()
 if not provider:
     db.add(
         BankProvider(
-            code="TIMO",
-            name="Timo",
-            provider_type="digital_bank",
+            code="VPBANK_MOCK",
+            name="VPBank Mock",
+            provider_type="mock_bank",
             status="available",
             supported_scopes=["accounts:read", "transactions:read", "balance:read"],
         )

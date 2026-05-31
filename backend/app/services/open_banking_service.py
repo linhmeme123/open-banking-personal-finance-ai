@@ -1,23 +1,22 @@
 from datetime import datetime
+from decimal import Decimal
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.ai.categorizer import categorize_transaction
+from app.integrations.banking.base import ProviderTransaction
+from app.integrations.banking.registry import (
+    get_provider_client,
+    get_provider_definition,
+    list_provider_definitions,
+)
 from app.models.account import Account
 from app.models.bank import BankConnection, BankProvider
 from app.models.transaction import Transaction
+from app.models.user import User
 from app.services.consent_service import create_consent_event
-from app.services.open_banking_mock import (
-    get_mock_accounts,
-    get_mock_provider,
-    get_mock_providers,
-    get_mock_transactions,
-)
-
-
-def serialize_provider(provider: dict):
-    return provider
 
 
 def serialize_connection(connection: BankConnection):
@@ -34,7 +33,7 @@ def serialize_connection(connection: BankConnection):
 
 
 def list_providers():
-    return [serialize_provider(provider) for provider in get_mock_providers()]
+    return [definition.serialize() for definition in list_provider_definitions()]
 
 
 def list_connections(db: Session, user_id: int):
@@ -49,57 +48,95 @@ def list_connections(db: Session, user_id: int):
 
 
 def get_or_create_provider(db: Session, provider_code: str) -> BankProvider:
-    provider_info = get_mock_provider(provider_code)
-    if not provider_info:
-        raise HTTPException(status_code=404, detail="Provider not found")
-
+    definition = get_provider_definition(provider_code)
     provider = db.query(BankProvider).filter(BankProvider.code == provider_code).first()
     if not provider:
-        provider = BankProvider(
-            code=provider_info["code"],
-            name=provider_info["name"],
-            provider_type=provider_info["type"],
-            logo_url=provider_info["logo_url"],
-            status=provider_info["status"],
-            supported_scopes=provider_info["supported_scopes"],
-        )
+        provider = BankProvider(code=definition.code)
         db.add(provider)
-    else:
-        provider.name = provider_info["name"]
-        provider.provider_type = provider_info["type"]
-        provider.logo_url = provider_info["logo_url"]
-        provider.status = provider_info["status"]
-        provider.supported_scopes = provider_info["supported_scopes"]
+    provider.name = definition.name
+    provider.provider_type = definition.type
+    provider.logo_url = definition.logo_url
+    provider.status = definition.status
+    provider.supported_scopes = list(definition.supported_scopes)
     db.commit()
     db.refresh(provider)
     return provider
 
 
-def connect_provider(db: Session, user_id: int, provider_code: str, scope: str):
+def connect_provider(db: Session, user: User, provider_code: str, scope: str):
     provider = get_or_create_provider(db, provider_code)
     if provider.status != "available":
         raise HTTPException(status_code=409, detail="Provider is not available yet")
 
+    client = get_provider_client(db, provider.code)
+    result = client.connect(user, provider, scope)
     connection = (
         db.query(BankConnection)
-        .filter(BankConnection.user_id == user_id, BankConnection.provider_id == provider.id)
+        .filter(BankConnection.user_id == user.id, BankConnection.provider_id == provider.id)
         .first()
     )
     if connection:
-        connection.status = "connected"
+        connection.status = result.status
         connection.consent_scope = scope
     else:
         connection = BankConnection(
-            user_id=user_id,
+            user_id=user.id,
             provider_id=provider.id,
-            status="connected",
+            status=result.status,
             consent_scope=scope,
         )
         db.add(connection)
     db.commit()
     db.refresh(connection)
-    create_consent_event(db, user_id, provider.code, scope, "granted")
+    create_consent_event(db, user.id, provider.code, scope, "granted")
     return serialize_connection(connection)
+
+
+def _upsert_account(db: Session, user_id: int, provider: BankProvider, provider_account) -> tuple[Account, bool]:
+    account = (
+        db.query(Account)
+        .filter(
+            Account.user_id == user_id,
+            Account.provider_id == provider.id,
+            Account.external_account_id == provider_account.external_account_id,
+        )
+        .first()
+    )
+    created = account is None
+    if not account:
+        account = Account(
+            user_id=user_id,
+            provider_id=provider.id,
+            external_account_id=provider_account.external_account_id,
+        )
+        db.add(account)
+    account.account_name = provider_account.account_name
+    account.account_type = provider_account.account_type
+    account.currency = provider_account.currency
+    account.balance = provider_account.balance
+    db.flush()
+    return account, created
+
+
+def _save_transaction(db: Session, account: Account, item: ProviderTransaction) -> bool:
+    if db.query(Transaction).filter(Transaction.external_id == item.external_transaction_id).first():
+        return False
+    category, confidence = categorize_transaction(item.description, item.merchant_name)
+    db.add(
+        Transaction(
+            account_id=account.id,
+            external_id=item.external_transaction_id,
+            transaction_time=item.transaction_time,
+            description=item.description,
+            merchant_name=item.merchant_name,
+            amount=item.amount,
+            currency=item.currency,
+            direction=item.direction,
+            category=category,
+            category_confidence=confidence,
+        )
+    )
+    return True
 
 
 def sync_provider(db: Session, user_id: int, provider_code: str):
@@ -112,37 +149,52 @@ def sync_provider(db: Session, user_id: int, provider_code: str):
     if not connection:
         raise HTTPException(status_code=409, detail="Connect provider before syncing")
 
-    created_accounts = 0
-    created_transactions = 0
-    for account_data in get_mock_accounts(provider.code):
-        account = (
-            db.query(Account)
-            .filter(
-                Account.user_id == user_id,
-                Account.provider_id == provider.id,
-                Account.account_name == account_data["account_name"],
-            )
-            .first()
-        )
-        if not account:
-            account = Account(user_id=user_id, provider_id=provider.id, **account_data)
-            db.add(account)
-            db.commit()
-            db.refresh(account)
-            created_accounts += 1
-
-        for item in get_mock_transactions(account.id, provider.code):
-            if db.query(Transaction).filter(Transaction.external_id == item["external_id"]).first():
-                continue
-            category, confidence = categorize_transaction(item["description"], item.get("merchant_name"))
-            db.add(Transaction(**item, category=category, category_confidence=confidence))
-            created_transactions += 1
+    client = get_provider_client(db, provider.code)
+    accounts_synced = 0
+    transactions_added = 0
+    latest_balance = Decimal("0")
+    for provider_account in client.get_accounts(connection):
+        account, _ = _upsert_account(db, user_id, provider, provider_account)
+        accounts_synced += 1
+        latest_balance += provider_account.balance
+        for item in client.get_transactions(connection, account, since=connection.last_synced_at):
+            transactions_added += int(_save_transaction(db, account, item))
 
     connection.last_synced_at = datetime.utcnow()
     db.commit()
     return {
         "status": "synced",
         "provider_code": provider.code,
-        "created_accounts": created_accounts,
-        "created_transactions": created_transactions,
+        "accounts_synced": accounts_synced,
+        "transactions_added": transactions_added,
+        "latest_balance": str(latest_balance),
+        # Backward-compatible fields for the existing dashboard.
+        "created_accounts": accounts_synced,
+        "created_transactions": transactions_added,
     }
+
+
+def process_transaction_webhook(db: Session, payload: dict[str, Any], headers: dict[str, str]):
+    provider_code = payload.get("provider_code")
+    if not provider_code:
+        raise HTTPException(status_code=422, detail="provider_code is required")
+    client = get_provider_client(db, provider_code)
+    if not client.verify_webhook(payload, headers):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    item = client.normalize_transaction(payload["transaction"])
+    provider = get_or_create_provider(db, provider_code)
+    account = (
+        db.query(Account)
+        .filter(Account.provider_id == provider.id, Account.external_account_id == item.external_account_id)
+        .order_by(Account.id.asc())
+        .first()
+    )
+    if not account:
+        raise HTTPException(status_code=404, detail="Linked account not found; sync the provider first")
+
+    transactions_added = int(_save_transaction(db, account, item))
+    if transactions_added:
+        account.balance += item.amount
+    db.commit()
+    return {"status": "accepted", "provider_code": provider_code, "transactions_added": transactions_added}

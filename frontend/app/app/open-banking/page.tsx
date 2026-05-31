@@ -15,9 +15,9 @@ import {
 } from "@/lib/finance";
 
 const PROVIDER_GROUPS: { type: ProviderType; title: string; description: string }[] = [
-  { type: "digital_bank", title: "Digital banks", description: "App-first banking accounts for everyday cashflow." },
-  { type: "fintech", title: "Fintech wallets", description: "Bring wallet activity into your consolidated view." },
-  { type: "traditional_bank", title: "Traditional banks", description: "Connect core banking accounts through the sandbox layer." },
+  { type: "mock_bank", title: "Mock banks", description: "Use the local bank console to simulate realistic account activity." },
+  { type: "sandbox", title: "Public sandboxes", description: "Provider adapters ready for public test environments." },
+  { type: "real_partner", title: "Real partners", description: "Partner integrations can join through the same provider contract." },
 ];
 
 export default function OpenBankingPage() {
@@ -67,7 +67,7 @@ export default function OpenBankingPage() {
   return (
     <div className="grid gap-7">
       <PageHeader
-        description="Grant scoped sandbox consent, then sync balances and transaction activity into your finance workspace."
+        description="Grant scoped consent, then sync balances and transaction activity through a provider adapter."
         eyebrow="Secure connections"
         title="Connect your banks"
       />
@@ -99,7 +99,7 @@ export default function OpenBankingPage() {
       })}
 
       <section className="glass-subtle px-4 py-3 text-xs leading-6 text-white/38">
-        Connected providers use scoped Open Banking sandbox APIs. {connections.length} provider{connections.length === 1 ? " is" : "s are"} connected to this profile.
+        Every provider is selected through the same banking adapter registry. {connections.length} provider{connections.length === 1 ? " is" : "s are"} connected to this profile.
       </section>
     </div>
   );
