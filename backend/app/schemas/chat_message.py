@@ -9,6 +9,8 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
+    provider: str
+    context_used: bool
 
 
 class AiChatMessageOut(BaseModel):

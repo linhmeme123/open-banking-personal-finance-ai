@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from datetime import datetime
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
@@ -164,11 +165,86 @@ class MvpFlowTest(unittest.TestCase):
             json={"message": "Tháng này tôi chi tiêu thế nào?"},
         )
         self.assertEqual(chat.status_code, 200)
-        self.assertIn("tổng chi tiêu", chat.json()["answer"].lower())
+        self.assertIn("chi tiêu", chat.json()["answer"])
+        self.assertEqual(chat.json()["provider"], "rule_based")
+        self.assertTrue(chat.json()["context_used"])
 
         history = self.client.get("/api/ai/chat/history", headers=headers)
         self.assertEqual(history.status_code, 200)
         self.assertEqual([item["role"] for item in history.json()], ["user", "assistant"])
+
+    def test_ai_chat_calls_selected_provider_with_summarized_user_context(self):
+        headers = self.auth_headers()
+        self.client.post(
+            "/api/open-banking/connect",
+            headers=headers,
+            json={"provider_code": "VPBANK_MOCK", "scope": "accounts:read transactions:read"},
+        )
+        self.client.post("/api/open-banking/sync", headers=headers, json={"provider_code": "VPBANK_MOCK"})
+
+        import app.services.ai_coach_service as coach_service
+
+        provider = Mock(provider_name="test_provider")
+        provider.generate_answer.return_value = "Câu trả lời từ AI."
+        with patch.object(coach_service, "get_ai_provider", return_value=provider):
+            chat = self.client.post(
+                "/api/ai/chat",
+                headers=headers,
+                json={"message": "Tháng này tôi tiêu nhiều nhất vào đâu?"},
+            )
+
+        self.assertEqual(chat.status_code, 200)
+        self.assertEqual(chat.json()["answer"], "Câu trả lời từ AI.")
+        self.assertEqual(chat.json()["provider"], "test_provider")
+        self.assertTrue(chat.json()["context_used"])
+        context = provider.generate_answer.call_args.kwargs["financial_context"]
+        self.assertIn("total_balance", context)
+        self.assertIn("top_categories", context)
+        self.assertIn("recent_transactions", context)
+        self.assertIn("connected_providers", context)
+        self.assertNotIn("hashed_password", context)
+        self.assertNotIn("token", context)
+
+    def test_ai_provider_registry_falls_back_to_rule_based(self):
+        import app.integrations.ai.registry as registry
+        from app.integrations.ai.rule_based_provider import RuleBasedAIProvider
+        from app.integrations.ai.openai_provider import OpenAIAIProvider
+
+        with patch.object(registry.settings, "ai_provider", "unknown"):
+            self.assertIsInstance(registry.get_ai_provider(), RuleBasedAIProvider)
+        with patch.object(registry.settings, "ai_provider", "openai"):
+            self.assertIsInstance(registry.get_ai_provider(), OpenAIAIProvider)
+
+    def test_openai_provider_handles_missing_key(self):
+        from app.core.config import settings
+        from app.integrations.ai.openai_provider import OpenAIAIProvider
+
+        with patch.object(settings, "openai_api_key", None):
+            answer = OpenAIAIProvider().generate_answer("test", {})
+        self.assertEqual(answer, "AI provider is not configured yet.")
+
+    def test_rule_based_provider_answers_balance_question_directly(self):
+        from app.integrations.ai.rule_based_provider import RuleBasedAIProvider
+
+        answer = RuleBasedAIProvider().generate_answer(
+            "cho tôi biết số dư hiện tại",
+            {
+                "synced_data_available": True,
+                "total_balance": {"VND": 54423000},
+                "monthly_income": {"VND": 0},
+                "monthly_expense": {"VND": 30000},
+                "recurring_merchants": [{"merchant": "Netflix", "occurrences": 4}],
+            },
+        )
+        self.assertEqual(answer, "Số dư hiện tại của bạn là 54,423,000 VND.")
+
+    def test_ollama_provider_handles_unavailable_service(self):
+        import httpx
+        import app.integrations.ai.ollama_provider as ollama_provider
+
+        with patch.object(ollama_provider.httpx, "post", side_effect=httpx.ConnectError("offline")):
+            answer = ollama_provider.OllamaAIProvider().generate_answer("test", {})
+        self.assertEqual(answer, "Ollama provider is currently unavailable.")
 
     def test_mock_bank_webhook_uses_provider_adapter(self):
         headers = self.auth_headers()

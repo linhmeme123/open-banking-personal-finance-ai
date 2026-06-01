@@ -16,7 +16,7 @@ import {
 } from "@/lib/finance";
 
 const PROVIDER_GROUPS: { type: ProviderType; title: string; description: string }[] = [
-  { type: "mock_bank", title: "Mock banks", description: "Use the local bank console to simulate realistic account activity." },
+  { type: "mock_bank", title: "Banks", description: "Use the local bank console to simulate realistic account activity." },
   { type: "sandbox", title: "Public sandboxes", description: "Provider adapters ready for public test environments." },
   { type: "real_partner", title: "Real partners", description: "Partner integrations can join through the same provider contract." },
 ];

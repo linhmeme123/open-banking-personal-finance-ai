@@ -17,6 +17,7 @@ export default function AiCoachPage() {
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [provider, setProvider] = useState("rule_based");
 
   async function loadHistory() {
     setHistory(await apiGet<ChatMessage[]>("/api/ai/chat/history"));
@@ -28,7 +29,8 @@ export default function AiCoachPage() {
     setLoading(true);
     setError("");
     try {
-      await apiPost<{ answer: string }>("/api/ai/chat", { message: message.trim() });
+      const response = await apiPost<{ answer: string; provider: string }>("/api/ai/chat", { message: message.trim() });
+      setProvider(response.provider);
       await loadHistory();
       setMessage("");
     } catch (nextError) {
@@ -49,6 +51,7 @@ export default function AiCoachPage() {
         eyebrow="Personalized guidance"
         title="AI Coach"
       />
+      <p className="-mt-4 text-xs text-white/35">Powered by {provider}</p>
 
       <section className="glass-panel grid min-h-[520px] grid-rows-[1fr_auto] overflow-hidden">
         <div className="grid content-start gap-3 overflow-y-auto p-4 sm:p-5">

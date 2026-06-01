@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.ai.coach import answer_personal_finance_question, persist_chat_turn
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.chat_message import AiChatMessage
 from app.models.user import User
 from app.schemas.chat_message import AiChatMessageOut, ChatRequest, ChatResponse
 from app.schemas.transaction import CategorizeRequest, CategorizeResponse
+from app.services.ai_coach_service import answer_personal_finance_question
 from app.services.transaction_service import categorize_user_transaction
 
 router = APIRouter()
@@ -27,9 +27,7 @@ def chat(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    answer = answer_personal_finance_question(db, current_user.id, payload.message)
-    persist_chat_turn(db, current_user.id, payload.message, answer)
-    return ChatResponse(answer=answer)
+    return ChatResponse(**answer_personal_finance_question(db, current_user, payload.message))
 
 
 @router.get("/chat/history", response_model=list[AiChatMessageOut])
