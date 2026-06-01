@@ -52,6 +52,7 @@ export type Account = {
 
 export type FinanceTransaction = {
   id: number;
+  external_id: string;
   transaction_time: string;
   description: string;
   merchant_name: string | null;
@@ -112,6 +113,12 @@ export function connectProvider(providerCode: string) {
   });
 }
 
+export function disconnectProvider(providerCode: string) {
+  return apiPost<{ status: string; provider_code: string }>("/api/open-banking/disconnect", {
+    provider_code: providerCode,
+  });
+}
+
 export function syncProvider(providerCode: string) {
   return apiPost<{ status: string; provider_code: string; created_accounts: number; created_transactions: number }>(
     "/api/open-banking/sync",
@@ -161,7 +168,7 @@ export type MockBankTransaction = {
   balance_before: number;
   balance_after: number;
   webhook_status: "pending" | "delivered" | "failed";
-  sync_status: "pending" | "synced";
+  sync_status: "pending" | "synced" | "failed";
 };
 
 export type MockBankEvent = {
@@ -222,7 +229,7 @@ export function sendMockBankWebhook(providerCode: string, externalTransactionId:
   return apiPost<{ status: string; transactions_added: number }>("/api/mock-bank/webhooks/send", {
     provider_code: providerCode,
     external_transaction_id: externalTransactionId,
-  }, undefined, publicApi);
+  });
 }
 
 export function getMockBankTransactionEvents(providerCode: string, externalTransactionId: string) {

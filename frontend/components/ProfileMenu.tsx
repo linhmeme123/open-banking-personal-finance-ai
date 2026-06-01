@@ -26,7 +26,7 @@ export function ProfileMenu() {
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
-        <UserAvatar name={user?.full_name} size="sm" />
+        <UserAvatar name={user?.full_name} avatarUrl={user?.avatar_url} size="sm" />
       </button>
 
       {open && (

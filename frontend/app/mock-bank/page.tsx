@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Clock3, Landmark, ListTree, Plus, Radio, RefreshCw, Send, WalletCards, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock3, ExternalLink, Landmark, ListTree, Loader2, Plus, Radio, RefreshCw, Send, WalletCards, X } from "lucide-react";
 import { Brand } from "@/components/Brand";
-import { getApiErrorMessage } from "@/lib/api";
+import { ApiError, getApiErrorMessage } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import {
   BankProvider,
@@ -48,6 +48,9 @@ export default function MockBankPage() {
   const [timeline, setTimeline] = useState<MockBankEvent[]>([]);
   const [timelineTransaction, setTimelineTransaction] = useState<MockBankTransaction | null>(null);
   const [message, setMessage] = useState("");
+  const [pushingTransactionId, setPushingTransactionId] = useState<string | null>(null);
+  const [recentlyPushedTransactionId, setRecentlyPushedTransactionId] = useState<string | null>(null);
+  const [pushErrors, setPushErrors] = useState<Record<string, string>>({});
   const selectedAccount = accounts.find((account) => account.external_account_id === accountId);
   const selectedProvider = providers.find((provider) => provider.code === providerCode);
 
@@ -82,7 +85,7 @@ export default function MockBankPage() {
         category: category || undefined,
         transaction_time: transactionTime || undefined,
       });
-      setMessage("Transaction added to the mock provider. Sync it or send a webhook.");
+      setMessage("Transaction added to the mock provider. Sync it or push it to Velora.");
       await load();
     } catch (error) {
       setMessage(getApiErrorMessage(error));
@@ -110,13 +113,33 @@ export default function MockBankPage() {
   }
 
   async function sendWebhook(transactionId: string) {
+    setPushingTransactionId(transactionId);
+    setPushErrors((current) => ({ ...current, [transactionId]: "" }));
     try {
+      const transaction = transactions.find((item) => item.external_transaction_id === transactionId);
+      console.log("[mock-bank] sending webhook", transaction);
       const result = await sendMockBankWebhook(providerCode, transactionId);
-      setMessage(`Webhook accepted. ${result.transactions_added} transaction imported into the finance app.`);
+      console.log("[mock-bank] webhook response", result);
+      setRecentlyPushedTransactionId(transactionId);
+      window.setTimeout(() => setRecentlyPushedTransactionId(null), 1800);
+      setMessage(result.status === "already_synced"
+        ? "This transaction was already sent to Velora."
+        : "Bank event delivered. The transaction is now available in Velora Transactions.");
       await load();
       await openTimeline(transactionId);
     } catch (error) {
-      setMessage(getApiErrorMessage(error));
+      const detail = error instanceof ApiError && (error.status === 401 || error.status === 403)
+        ? "Sign in to Velora first, then connect this mock provider in Open Banking."
+        : getApiErrorMessage(error);
+      setPushErrors((current) => ({ ...current, [transactionId]: detail }));
+      setMessage(`Unable to push bank event: ${detail}`);
+      try {
+        await load();
+      } catch {
+        // Keep the original push error visible when refresh also fails.
+      }
+    } finally {
+      setPushingTransactionId(null);
     }
   }
 
@@ -220,9 +243,9 @@ export default function MockBankPage() {
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Sync to Open Banking
           </button>
-          <Link className="button-secondary" href="/app/open-banking">
+          <Link className="button-secondary" href="/app/transactions">
             <Landmark className="h-4 w-4" aria-hidden="true" />
-            Open Velora App
+            Open Velora Transactions
           </Link>
         </div>
 
@@ -242,14 +265,46 @@ export default function MockBankPage() {
                   <td className="px-5 py-4"><StatusBadge value={item.webhook_status} /></td>
                   <td className="px-5 py-4"><StatusBadge value={item.sync_status} /></td>
                   <td className="px-5 py-4 text-right">
-                    <button className="button-secondary mr-2 px-3 py-2 text-xs" onClick={() => openTimeline(item.external_transaction_id)} type="button">
-                      <ListTree className="h-4 w-4" aria-hidden="true" />
-                      Timeline
-                    </button>
-                    <button className="button-secondary px-3 py-2 text-xs" onClick={() => sendWebhook(item.external_transaction_id)} type="button">
-                      <Send className="h-4 w-4" aria-hidden="true" />
-                      Send Webhook
-                    </button>
+                    <div className="flex justify-end">
+                      <button className="button-secondary mr-2 px-3 py-2 text-xs" onClick={() => openTimeline(item.external_transaction_id)} type="button">
+                        <ListTree className="h-4 w-4" aria-hidden="true" />
+                        Timeline
+                      </button>
+                      <button
+                        className={`button-secondary px-3 py-2 text-xs transition-all ${item.sync_status === "synced" ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-200" : ""} ${recentlyPushedTransactionId === item.external_transaction_id ? "scale-105 shadow-lg shadow-emerald-500/20" : ""}`}
+                        disabled={pushingTransactionId === item.external_transaction_id || item.sync_status === "synced"}
+                        onClick={() => sendWebhook(item.external_transaction_id)}
+                        type="button"
+                      >
+                        {pushingTransactionId === item.external_transaction_id
+                          ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          : item.sync_status === "synced"
+                            ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                            : <Send className="h-4 w-4" aria-hidden="true" />}
+                        {pushingTransactionId === item.external_transaction_id
+                          ? "Sending..."
+                          : item.sync_status === "synced"
+                            ? "Sent to Velora"
+                            : "Push to Velora"}
+                      </button>
+                      {item.sync_status === "synced" && (
+                        <Link
+                          className="button-secondary ml-2 px-3 py-2 text-xs"
+                          href={`/app/transactions?external_transaction_id=${encodeURIComponent(item.external_transaction_id)}`}
+                        >
+                          <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                          View in Velora
+                        </Link>
+                      )}
+                    </div>
+                    {pushErrors[item.external_transaction_id] && (
+                      <div className="mt-2 flex items-center justify-end gap-2 text-xs text-red-200">
+                        <span>{pushErrors[item.external_transaction_id]}</span>
+                        <Link className="font-semibold text-pink-200 underline underline-offset-2" href="/app/open-banking">
+                          Connect provider
+                        </Link>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

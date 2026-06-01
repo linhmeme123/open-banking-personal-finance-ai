@@ -47,8 +47,13 @@ def list_provider_definitions() -> list[ProviderDefinition]:
     return list(PROVIDERS)
 
 
+def normalize_provider_code(provider_code: str) -> str:
+    return provider_code.strip().upper()
+
+
 def get_provider_definition(provider_code: str) -> ProviderDefinition:
-    provider = next((item for item in PROVIDERS if item.code == provider_code), None)
+    normalized_code = normalize_provider_code(provider_code)
+    provider = next((item for item in PROVIDERS if item.code == normalized_code), None)
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
     return provider

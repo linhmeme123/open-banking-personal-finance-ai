@@ -11,6 +11,7 @@ export type AuthUser = {
   full_name: string;
   email: string;
   is_active: boolean;
+  avatar_url?: string | null;
 };
 
 export type StoredSession = {

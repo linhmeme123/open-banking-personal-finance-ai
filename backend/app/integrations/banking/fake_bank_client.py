@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -38,13 +39,16 @@ class FakeBankClient(BankProviderClient):
         )
 
     def normalize_transaction(self, raw_transaction: dict[str, Any]) -> ProviderTransaction:
+        transaction_time = raw_transaction["transaction_time"]
+        if isinstance(transaction_time, str):
+            transaction_time = datetime.fromisoformat(transaction_time.replace("Z", "+00:00"))
         return ProviderTransaction(
             external_transaction_id=raw_transaction["external_transaction_id"],
             external_account_id=raw_transaction["external_account_id"],
-            transaction_time=raw_transaction["transaction_time"],
+            transaction_time=transaction_time,
             description=raw_transaction["description"],
             merchant_name=raw_transaction.get("merchant_name"),
-            amount=raw_transaction["amount"],
+            amount=Decimal(str(raw_transaction["amount"])),
             currency=raw_transaction["currency"],
             direction=raw_transaction["direction"],
         )

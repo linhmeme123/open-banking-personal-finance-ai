@@ -7,19 +7,46 @@ import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useAuth } from "@/components/AuthProvider";
-import { storeAvatar } from "@/lib/session";
+import { getStoredSession, storeSession } from "@/lib/session";
 
 export default function ProfilePage() {
   const router = useRouter();
   const { logout, status, user } = useAuth();
   const [passwordMessage, setPasswordMessage] = useState("");
 
-  function selectAvatar(event: ChangeEvent<HTMLInputElement>) {
+  async function selectAvatar(event: ChangeEvent<HTMLInputElement>) {
+    console.log("[avatar] selectAvatar triggered");
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => storeAvatar(String(reader.result ?? ""));
-    reader.readAsDataURL(file);
+  
+    const session = getStoredSession();
+  
+    if (!session?.access_token) return;
+  
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const url = `${apiBaseUrl}/api/users/avatar`;
+  
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: formData,
+    });
+  
+    const data = await response.json();
+    if (!response.ok) {
+      console.log("[avatar] upload failed:", data);
+      throw new Error(data?.detail || "Failed to upload avatar");
+    }
+  
+    storeSession({
+      ...session,
+      user: data,
+    });
   }
 
   async function signOut() {
@@ -44,7 +71,7 @@ export default function ProfilePage() {
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
         <Card title="Personal information">
           <div className="flex flex-wrap items-center gap-5 border-b border-white/[0.08] pb-5">
-            <UserAvatar name={user?.full_name} size="lg" />
+            <UserAvatar name={user?.full_name} avatarUrl={user?.avatar_url} size="lg" />
             <div>
               <p className="text-lg font-semibold text-white">{user?.full_name}</p>
               <p className="mt-1 text-sm text-white/42">{user?.email}</p>

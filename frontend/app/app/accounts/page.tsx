@@ -13,10 +13,17 @@ export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
+  function load() {
+    setMessage("");
     getAccounts()
       .then(setAccounts)
       .catch((error) => setMessage(getApiErrorMessage(error, "Unable to load accounts.")));
+  }
+
+  useEffect(() => {
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
   }, []);
 
   const groups = Array.from(new Set(accounts.map((account) => account.provider_code))).map((providerCode) => ({

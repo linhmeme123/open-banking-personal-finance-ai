@@ -197,6 +197,7 @@ class MvpFlowTest(unittest.TestCase):
         self.assertEqual(created.json()["balance_after"], created.json()["balance_before"] - 65000)
         webhook = self.client.post(
             "/api/mock-bank/webhooks/send",
+            headers=headers,
             json={
                 "provider_code": "VPBANK_MOCK",
                 "external_transaction_id": created.json()["external_transaction_id"],
@@ -224,6 +225,209 @@ class MvpFlowTest(unittest.TestCase):
         self.assertIn("webhook_verified", event_types)
         self.assertIn("transaction_synced", event_types)
         self.assertIn("transaction_categorized", event_types)
+
+    def test_mock_bank_webhook_creates_local_account_after_connect_without_sync(self):
+        headers = self.auth_headers()
+        connected = self.client.post(
+            "/api/open-banking/connect",
+            headers=headers,
+            json={"provider_code": "vpbank_mock"},
+        )
+        self.assertEqual(connected.status_code, 200)
+        accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
+        source_account = accounts[0]
+        created = self.client.post(
+            "/api/mock-bank/transactions",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": source_account["external_account_id"],
+                "description": "Highlands Coffee",
+                "merchant_name": "Highlands Coffee",
+                "amount": 65000,
+                "direction": "expense",
+            },
+        )
+        self.assertEqual(created.status_code, 200)
+
+        webhook = self.client.post(
+            "/api/mock-bank/webhooks/send",
+            headers=headers,
+            json={
+                "provider_code": "vpbank_mock",
+                "external_transaction_id": created.json()["external_transaction_id"],
+            },
+        )
+        self.assertEqual(webhook.status_code, 200)
+        self.assertEqual(webhook.json()["transactions_added"], 1)
+
+        transactions = self.client.get("/api/transactions", headers=headers)
+        self.assertEqual(transactions.status_code, 200)
+        imported = next(
+            item
+            for item in transactions.json()
+            if item["description"] == "Highlands Coffee"
+            and item["id"] == max(transaction["id"] for transaction in transactions.json())
+        )
+        self.assertEqual(imported["category"], "food")
+
+        local_accounts = self.client.get("/api/accounts", headers=headers)
+        self.assertEqual(local_accounts.status_code, 200)
+        self.assertEqual(len(local_accounts.json()), 1)
+        self.assertEqual(local_accounts.json()[0]["balance"], created.json()["balance_after"])
+
+        duplicate = self.client.post(
+            "/api/mock-bank/webhooks/send",
+            headers=headers,
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_transaction_id": created.json()["external_transaction_id"],
+            },
+        )
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertEqual(duplicate.json()["status"], "already_synced")
+        self.assertEqual(duplicate.json()["transactions_added"], 0)
+        duplicate_accounts = self.client.get("/api/accounts", headers=headers)
+        self.assertEqual(duplicate_accounts.json()[0]["balance"], created.json()["balance_after"])
+
+    def test_mock_bank_webhook_marks_failed_when_provider_is_not_connected(self):
+        headers = self.auth_headers()
+        accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
+        created = self.client.post(
+            "/api/mock-bank/transactions",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": accounts[0]["external_account_id"],
+                "description": "Highlands Coffee",
+                "amount": 65000,
+                "direction": "expense",
+            },
+        )
+
+        webhook = self.client.post(
+            "/api/mock-bank/webhooks/send",
+            headers=headers,
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_transaction_id": created.json()["external_transaction_id"],
+            },
+        )
+        self.assertEqual(webhook.status_code, 409)
+        transactions = self.client.get("/api/mock-bank/transactions?provider_code=VPBANK_MOCK").json()
+        failed = next(
+            item
+            for item in transactions
+            if item["external_transaction_id"] == created.json()["external_transaction_id"]
+        )
+        self.assertEqual(failed["webhook_status"], "failed")
+        self.assertEqual(failed["sync_status"], "failed")
+
+    def test_disconnect_provider_revokes_consent_and_blocks_future_pushes(self):
+        headers = self.auth_headers()
+        self.client.post(
+            "/api/open-banking/connect",
+            headers=headers,
+            json={"provider_code": "VPBANK_MOCK"},
+        )
+
+        disconnected = self.client.post(
+            "/api/open-banking/disconnect",
+            headers=headers,
+            json={"provider_code": "VPBANK_MOCK"},
+        )
+        self.assertEqual(disconnected.status_code, 200)
+        self.assertEqual(disconnected.json()["status"], "disconnected")
+        connections = self.client.get("/api/open-banking/connections", headers=headers)
+        self.assertEqual(connections.json(), [])
+        consents = self.client.get("/api/consents", headers=headers)
+        self.assertEqual(consents.json()[0]["action"], "revoked")
+
+        accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
+        created = self.client.post(
+            "/api/mock-bank/transactions",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": accounts[0]["external_account_id"],
+                "description": "Đạp xe hồ Tây",
+                "amount": 30000,
+                "direction": "expense",
+            },
+        )
+        webhook = self.client.post(
+            "/api/mock-bank/webhooks/send",
+            headers=headers,
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_transaction_id": created.json()["external_transaction_id"],
+            },
+        )
+        self.assertEqual(webhook.status_code, 409)
+
+    def test_mock_bank_cycling_transaction_is_visible_as_transport_after_push(self):
+        headers = self.auth_headers()
+        self.client.post(
+            "/api/open-banking/connect",
+            headers=headers,
+            json={"provider_code": "VPBANK_MOCK"},
+        )
+        accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
+        created = self.client.post(
+            "/api/mock-bank/transactions",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": accounts[0]["external_account_id"],
+                "description": "Đạp xe hồ Tây",
+                "merchant_name": "Đạp xe",
+                "amount": 30000,
+                "direction": "expense",
+            },
+        )
+
+        webhook = self.client.post(
+            "/api/mock-bank/webhooks/send",
+            headers=headers,
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_transaction_id": created.json()["external_transaction_id"],
+            },
+        )
+        self.assertEqual(webhook.status_code, 200)
+
+        transactions = self.client.get("/api/transactions?search=Đạp xe", headers=headers)
+        self.assertEqual(transactions.status_code, 200)
+        self.assertEqual(len(transactions.json()), 1)
+        self.assertEqual(transactions.json()[0]["external_id"], created.json()["external_transaction_id"])
+        self.assertEqual(transactions.json()[0]["description"], "Đạp xe hồ Tây")
+        self.assertEqual(transactions.json()[0]["category"], "transport")
+
+    def test_bank_transaction_webhook_route_normalizes_json_payload(self):
+        headers = self.auth_headers()
+        self.client.post(
+            "/api/open-banking/connect",
+            headers=headers,
+            json={"provider_code": "VPBANK_MOCK"},
+        )
+        accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
+        created = self.client.post(
+            "/api/mock-bank/transactions",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": accounts[0]["external_account_id"],
+                "description": "Highlands Coffee",
+                "merchant_name": "Highlands Coffee",
+                "amount": 65000,
+                "direction": "expense",
+            },
+        )
+
+        webhook = self.client.post(
+            "/api/webhooks/bank/transactions",
+            headers={"x-fake-bank-signature": "velora-fake-bank"},
+            json={"provider_code": "VPBANK_MOCK", "transaction": created.json()},
+        )
+        self.assertEqual(webhook.status_code, 200)
+        transactions = self.client.get("/api/transactions", headers=headers)
+        self.assertEqual(transactions.status_code, 200)
+        self.assertEqual(transactions.json()[0]["category"], "food")
 
     def test_public_sandbox_is_not_exposed_as_mock_console(self):
         response = self.client.get("/api/mock-bank/accounts?provider_code=OPEN_BANK_PROJECT_SANDBOX")

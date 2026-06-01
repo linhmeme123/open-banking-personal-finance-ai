@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { formatCategory, formatCurrency } from "@/lib/format";
 import { FinanceTransaction } from "@/lib/finance";
 
@@ -5,11 +6,19 @@ export function TransactionTable({
   transactions,
   selectedId,
   onSelect,
+  focusedId,
 }: {
   transactions: FinanceTransaction[];
   selectedId: number | null;
   onSelect: (transactionId: number) => void;
+  focusedId?: number | null;
 }) {
+  const focusedRowRef = useRef<HTMLTableRowElement | null>(null);
+
+  useEffect(() => {
+    focusedRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedId]);
+
   return (
     <section className="glass-panel overflow-x-auto">
       <table className="w-full min-w-[960px] text-left text-sm">
@@ -25,7 +34,11 @@ export function TransactionTable({
         </thead>
         <tbody>
           {transactions.map((transaction) => (
-            <tr className="border-b border-white/[0.06] last:border-0" key={transaction.id}>
+            <tr
+              className={`border-b border-white/[0.06] transition-colors last:border-0 ${focusedId === transaction.id ? "bg-pink-300/[0.10] ring-1 ring-inset ring-pink-300/30" : ""}`}
+              key={transaction.id}
+              ref={focusedId === transaction.id ? focusedRowRef : undefined}
+            >
               <td className="px-5 py-4">
                 <input aria-label={`Select ${transaction.description}`} checked={selectedId === transaction.id} className="accent-pink-500" name="selected-transaction" onChange={() => onSelect(transaction.id)} type="radio" />
               </td>

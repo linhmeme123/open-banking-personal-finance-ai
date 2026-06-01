@@ -82,18 +82,30 @@ def list_transaction_events(db: Session, provider_code: str, external_transactio
     ]
 
 
-def send_webhook(db: Session, provider_code: str, external_transaction_id: str):
+def send_webhook(db: Session, provider_code: str, external_transaction_id: str, user_id: int):
     client = _get_mock_client(db, provider_code)
     transaction = _run_console_operation(lambda: client.get_mock_transaction(external_transaction_id))
     if not transaction:
         raise HTTPException(status_code=404, detail="Mock transaction not found")
 
+    print(
+        "[mock-bank] send webhook",
+        {
+            "provider_code": provider_code,
+            "mock_transaction_id": external_transaction_id,
+            "external_transaction_id": transaction["external_transaction_id"],
+            "external_account_id": transaction["external_account_id"],
+            "amount": str(transaction["amount"]),
+            "direction": transaction["direction"],
+        },
+    )
     client.record_webhook_sent(external_transaction_id)
     try:
         return process_transaction_webhook(
             db,
             {"provider_code": provider_code, "transaction": transaction},
             client.get_webhook_headers(),
+            user_id=user_id,
         )
     except Exception as exc:
         reason = exc.detail if isinstance(exc, HTTPException) else str(exc)

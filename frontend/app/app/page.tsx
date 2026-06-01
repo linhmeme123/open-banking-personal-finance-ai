@@ -105,12 +105,6 @@ export default function OverviewPage() {
         description="Your connected balances, monthly cashflow, and the next signals worth your attention."
         eyebrow="Financial pulse"
         title={`Good to see you, ${user?.full_name.split(" ")[0] ?? "there"}`}
-        action={
-          <Link className="button-secondary" href="/app/open-banking">
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            Sync accounts
-          </Link>
-        }
       />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

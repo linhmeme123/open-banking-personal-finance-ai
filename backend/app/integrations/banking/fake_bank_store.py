@@ -189,4 +189,5 @@ def mark_transaction_failed(provider_code: str, external_transaction_id: str, re
     transaction = get_transaction(provider_code, external_transaction_id)
     if transaction:
         transaction["webhook_status"] = "failed"
+        transaction["sync_status"] = "failed"
         _add_event(external_transaction_id, "transaction_failed", f"Failed with reason: {reason}")

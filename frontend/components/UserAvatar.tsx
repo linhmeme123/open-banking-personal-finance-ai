@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AVATAR_CHANGE_EVENT, getStoredAvatar } from "@/lib/session";
-
 type UserAvatarProps = {
-  name?: string;
+  name?: string | null;
+  avatarUrl?: string | null;
   size?: "sm" | "md" | "lg";
 };
 
@@ -14,21 +12,14 @@ const sizeClasses = {
   lg: "h-20 w-20 text-xl",
 };
 
-export function UserAvatar({ name = "User", size = "md" }: UserAvatarProps) {
-  const [avatar, setAvatar] = useState("");
+export function UserAvatar({
+  name = "User",
+  avatarUrl,
+  size = "md",
+}: UserAvatarProps) {
+  const displayName = name || "User";
 
-  useEffect(() => {
-    const syncAvatar = () => setAvatar(getStoredAvatar());
-    syncAvatar();
-    window.addEventListener(AVATAR_CHANGE_EVENT, syncAvatar);
-    window.addEventListener("storage", syncAvatar);
-    return () => {
-      window.removeEventListener(AVATAR_CHANGE_EVENT, syncAvatar);
-      window.removeEventListener("storage", syncAvatar);
-    };
-  }, []);
-
-  const initials = name
+  const initials = displayName
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
@@ -36,12 +27,20 @@ export function UserAvatar({ name = "User", size = "md" }: UserAvatarProps) {
     .join("")
     .toUpperCase();
 
-  if (avatar) {
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
+  const avatarSrc = avatarUrl
+    ? avatarUrl.startsWith("http")
+      ? avatarUrl
+      : `${apiBaseUrl}${avatarUrl}`
+    : "";
+
+  if (avatarSrc) {
     return (
       <img
-        alt={`${name} avatar`}
+        alt={`${displayName} avatar`}
         className={`${sizeClasses[size]} shrink-0 rounded-full border border-pink-300/30 object-cover`}
-        src={avatar}
+        src={avatarSrc}
       />
     );
   }

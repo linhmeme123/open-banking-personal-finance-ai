@@ -8,3 +8,4 @@ class UserOut(BaseModel):
     full_name: str
     email: EmailStr
     is_active: bool
+    avatar_url: str | None = None

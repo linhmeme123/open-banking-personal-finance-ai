@@ -14,6 +14,7 @@ from app.models.transaction import Transaction
 def serialize_transaction(transaction: Transaction):
     return {
         "id": transaction.id,
+        "external_id": transaction.external_id,
         "transaction_time": transaction.transaction_time.isoformat(),
         "description": transaction.description,
         "merchant_name": transaction.merchant_name,

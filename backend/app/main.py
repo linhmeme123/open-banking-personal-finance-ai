@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 import app.models
 from app.api import (
@@ -13,6 +15,7 @@ from app.api import (
     open_banking,
     transactions,
     webhooks,
+    users,
 )
 from app.core.config import settings
 from app.db.session import Base, engine
@@ -36,8 +39,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+app.mount(
+    "/uploads",
+    StaticFiles(directory=UPLOAD_DIR),
+    name="uploads",
+)
+
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
 app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
 app.include_router(insights.router, prefix="/api/insights", tags=["insights"])

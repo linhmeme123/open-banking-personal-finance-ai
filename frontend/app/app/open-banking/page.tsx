@@ -8,6 +8,7 @@ import {
   BankConnection,
   BankProvider,
   connectProvider,
+  disconnectProvider,
   getConnections,
   getProviders,
   ProviderType,
@@ -64,6 +65,21 @@ export default function OpenBankingPage() {
     }
   }
 
+  async function disconnect(providerCode: string) {
+    if (!window.confirm("Disconnect this provider? Existing imported transactions will remain in Velora.")) return;
+    setActiveProvider(providerCode);
+    setMessage("");
+    try {
+      await disconnectProvider(providerCode);
+      setMessage("Provider disconnected. Existing imported transactions remain available.");
+      setConnections(await getConnections());
+    } catch (error) {
+      setMessage(getApiErrorMessage(error, "Unable to disconnect this provider."));
+    } finally {
+      setActiveProvider("");
+    }
+  }
+
   return (
     <div className="grid gap-7">
       <PageHeader
@@ -89,6 +105,7 @@ export default function OpenBankingPage() {
                   key={provider.code}
                   loading={activeProvider === provider.code}
                   onConnect={() => connect(provider.code)}
+                  onDisconnect={() => disconnect(provider.code)}
                   onSync={() => sync(provider.code)}
                   provider={provider}
                 />

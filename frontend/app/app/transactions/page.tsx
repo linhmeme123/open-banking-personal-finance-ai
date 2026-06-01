@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { BrainCircuit, Landmark, Loader2, ReceiptText, WandSparkles } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
@@ -19,21 +20,27 @@ import {
 } from "@/lib/finance";
 
 export default function TransactionsPage() {
+  const searchParams = useSearchParams();
+  const focusedExternalId = searchParams.get("external_transaction_id");
   const [connections, setConnections] = useState<BankConnection[]>([]);
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
   const [filters, setFilters] = useState<TransactionFilterValues>(EMPTY_TRANSACTION_FILTERS);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const focusedId = transactions.find((transaction) => transaction.external_id === focusedExternalId)?.id ?? null;
 
-  async function load(activeFilters = filters) {
+  async function load(activeFilters = filtersRef.current) {
     setBusy(true);
     setMessage("");
     try {
       const [nextConnections, nextTransactions] = await Promise.all([getConnections(), getTransactions(activeFilters)]);
+      const focusedTransaction = nextTransactions.find((transaction) => transaction.external_id === focusedExternalId);
       setConnections(nextConnections);
       setTransactions(nextTransactions);
-      setSelectedId((current) => nextTransactions.some((transaction) => transaction.id === current) ? current : null);
+      setSelectedId((current) => focusedTransaction?.id ?? (nextTransactions.some((transaction) => transaction.id === current) ? current : null));
     } catch (error) {
       setMessage(getApiErrorMessage(error, "Unable to load transactions."));
     } finally {
@@ -43,6 +50,9 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     load(EMPTY_TRANSACTION_FILTERS);
+    const refreshOnFocus = () => load();
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
   }, []);
 
   async function categorizeSelected() {
@@ -96,7 +106,7 @@ export default function TransactionsPage() {
 
       <TransactionFilters busy={busy} connections={connections} onApply={() => load()} onChange={setFilters} values={filters} />
 
-      {transactions.length > 0 && <TransactionTable onSelect={setSelectedId} selectedId={selectedId} transactions={transactions} />}
+      {transactions.length > 0 && <TransactionTable focusedId={focusedId} onSelect={setSelectedId} selectedId={selectedId} transactions={transactions} />}
 
       {!busy && transactions.length === 0 && (
         <EmptyState

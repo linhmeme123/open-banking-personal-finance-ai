@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user
 from app.db.session import get_db
+from app.models.user import User
 from app.schemas.mock_bank import (
     MockBankAccountCreate,
     MockBankGenerateRequest,
@@ -59,5 +61,9 @@ def transaction_events(
 
 
 @router.post("/webhooks/send")
-def send_webhook(payload: MockBankWebhookSendRequest, db: Session = Depends(get_db)):
-    return mock_bank_service.send_webhook(db, payload.provider_code, payload.external_transaction_id)
+def send_webhook(
+    payload: MockBankWebhookSendRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return mock_bank_service.send_webhook(db, payload.provider_code, payload.external_transaction_id, current_user.id)

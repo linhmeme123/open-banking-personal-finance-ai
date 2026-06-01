@@ -1,4 +1,4 @@
-import { Building2, Landmark, Loader2, RefreshCw, ShieldCheck, Smartphone } from "lucide-react";
+import { Building2, Landmark, Loader2, RefreshCw, ShieldCheck, Smartphone, Unplug } from "lucide-react";
 import { BankConnection, BankProvider, ProviderType } from "@/lib/finance";
 
 const TYPE_LABELS: Record<ProviderType, string> = {
@@ -18,12 +18,14 @@ export function BankProviderCard({
   connection,
   loading,
   onConnect,
+  onDisconnect,
   onSync,
 }: {
   provider: BankProvider;
   connection?: BankConnection;
   loading: boolean;
   onConnect: () => void;
+  onDisconnect: () => void;
   onSync: () => void;
 }) {
   const unavailable = provider.status !== "available";
@@ -43,7 +45,11 @@ export function BankProviderCard({
       <p className="mt-5 text-[11px] font-semibold uppercase text-pink-200/65">{TYPE_LABELS[provider.type]}</p>
       <h3 className="mt-1 text-base font-semibold text-white">{provider.name}</h3>
       <p className="mt-2 text-sm leading-6 text-white/42">
-        {connection ? "Consent active. Sync to refresh balances and transaction activity." : "Connect through the provider adapter with scoped data access."}
+        {connection
+          ? "Consent active. Sync to refresh balances and transaction activity."
+          : provider.type === "mock_bank"
+            ? "Demo connection for local testing. No card number or bank credentials are required."
+            : "Connect through the provider adapter with scoped data access."}
       </p>
       {connection && (
         <p className="mt-3 text-xs leading-5 text-white/35">
@@ -61,10 +67,16 @@ export function BankProviderCard({
           </button>
         )}
         {connection && (
-          <button className="button-secondary w-full" disabled={loading} onClick={onSync} type="button">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
-            Sync activity
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button className="button-secondary" disabled={loading} onClick={onSync} type="button">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
+              Sync
+            </button>
+            <button className="button-secondary text-red-200" disabled={loading} onClick={onDisconnect} type="button">
+              <Unplug className="h-4 w-4" aria-hidden="true" />
+              Disconnect
+            </button>
+          </div>
         )}
       </div>
     </article>

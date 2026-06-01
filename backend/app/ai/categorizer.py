@@ -5,7 +5,7 @@ def categorize_transaction(description: str, merchant_name: str | None = None) -
     rules = [
         (["coffee", "highlands", "starbucks", "phuc long", "cafe", "restaurant"], "food", 0.94),
         (["grocery", "supermarket", "winmart", "coopmart", "bach hoa"], "groceries", 0.92),
-        (["grab", "be ", "taxi", "bus", "metro"], "transport", 0.93),
+        (["grab", "be ", "taxi", "bus", "metro", "bike", "đạp xe", "dap xe"], "transport", 0.93),
         (["salary", "payroll", "luong"], "salary", 0.98),
         (["transfer", "chuyen khoan", "bank transfer"], "transfer", 0.90),
         (["shopee", "lazada", "tiki"], "shopping", 0.91),
