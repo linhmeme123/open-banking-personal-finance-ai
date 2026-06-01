@@ -35,6 +35,7 @@ export type BankConnection = {
   status: string;
   consent_scope: string;
   last_synced_at: string | null;
+  connected_accounts_count: number;
 };
 
 export type Account = {
@@ -46,6 +47,7 @@ export type Account = {
   provider_code: string;
   provider_name: string;
   provider_type: ProviderType;
+  last_synced_at: string | null;
 };
 
 export type FinanceTransaction = {
@@ -143,6 +145,7 @@ export type MockBankAccount = {
   account_type: string;
   currency: string;
   balance: number;
+  last_updated_at: string;
 };
 
 export type MockBankTransaction = {
@@ -154,6 +157,17 @@ export type MockBankTransaction = {
   amount: number;
   currency: string;
   direction: "income" | "expense";
+  category: string | null;
+  balance_before: number;
+  balance_after: number;
+  webhook_status: "pending" | "delivered" | "failed";
+  sync_status: "pending" | "synced";
+};
+
+export type MockBankEvent = {
+  event_type: string;
+  message: string;
+  created_at: string;
 };
 
 const publicApi = { auth: false };
@@ -191,6 +205,8 @@ export function createMockBankTransaction(body: {
   merchant_name: string;
   amount: number;
   direction: string;
+  category?: string;
+  transaction_time?: string;
 }) {
   return apiPost<MockBankTransaction>("/api/mock-bank/transactions", body, undefined, publicApi);
 }
@@ -207,4 +223,12 @@ export function sendMockBankWebhook(providerCode: string, externalTransactionId:
     provider_code: providerCode,
     external_transaction_id: externalTransactionId,
   }, undefined, publicApi);
+}
+
+export function getMockBankTransactionEvents(providerCode: string, externalTransactionId: string) {
+  return apiGet<MockBankEvent[]>(
+    `/api/mock-bank/transactions/${externalTransactionId}/events${buildQuery({ provider_code: providerCode })}`,
+    undefined,
+    publicApi,
+  );
 }

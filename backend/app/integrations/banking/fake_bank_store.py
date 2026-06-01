@@ -6,6 +6,7 @@ from uuid import uuid4
 
 ACCOUNTS: dict[str, list[dict]] = {}
 TRANSACTIONS: dict[str, list[dict]] = {}
+EVENTS: dict[str, list[dict]] = {}
 
 TEMPLATES = [
     ("Highlands Coffee", "Highlands Coffee", Decimal("-65000"), "expense"),
@@ -19,6 +20,17 @@ TEMPLATES = [
 def reset_store() -> None:
     ACCOUNTS.clear()
     TRANSACTIONS.clear()
+    EVENTS.clear()
+
+
+def _add_event(external_transaction_id: str, event_type: str, message: str) -> None:
+    EVENTS.setdefault(external_transaction_id, []).append(
+        {
+            "event_type": event_type,
+            "message": message,
+            "created_at": datetime.utcnow(),
+        }
+    )
 
 
 def _seed(provider_code: str) -> None:
@@ -32,6 +44,7 @@ def _seed(provider_code: str) -> None:
             "account_type": "checking",
             "currency": "VND",
             "balance": Decimal("18450000"),
+            "last_updated_at": datetime.utcnow(),
         }
     ]
     TRANSACTIONS[provider_code] = []
@@ -52,6 +65,7 @@ def create_account(provider_code: str, account_name: str, account_type: str, cur
         "account_type": account_type,
         "currency": currency,
         "balance": balance,
+        "last_updated_at": datetime.utcnow(),
     }
     ACCOUNTS[provider_code].append(account)
     return account
@@ -70,24 +84,42 @@ def create_transaction(
     merchant_name: str | None,
     amount: Decimal,
     direction: str,
+    category: str | None = None,
     transaction_time: datetime | None = None,
 ) -> dict:
     _seed(provider_code) if provider_code not in ACCOUNTS else None
+    reconciled_amount = abs(amount) if direction == "income" else -abs(amount)
     transaction = {
         "external_transaction_id": f"{provider_code.lower()}-{uuid4().hex}",
         "external_account_id": external_account_id,
         "transaction_time": transaction_time or datetime.utcnow(),
         "description": description,
         "merchant_name": merchant_name,
-        "amount": amount,
+        "amount": reconciled_amount,
         "currency": "VND",
         "direction": direction,
+        "category": category,
+        "balance_before": None,
+        "balance_after": None,
+        "webhook_status": "pending",
+        "sync_status": "pending",
     }
-    TRANSACTIONS.setdefault(provider_code, []).append(transaction)
     for account in ACCOUNTS[provider_code]:
         if account["external_account_id"] == external_account_id:
-            account["balance"] += amount
+            transaction["balance_before"] = account["balance"]
+            account["balance"] += reconciled_amount
+            account["last_updated_at"] = datetime.utcnow()
+            transaction["balance_after"] = account["balance"]
             break
+    else:
+        raise ValueError("Mock account not found")
+    TRANSACTIONS.setdefault(provider_code, []).append(transaction)
+    _add_event(transaction["external_transaction_id"], "transaction_created", "Transaction Created")
+    _add_event(
+        transaction["external_transaction_id"],
+        "balance_updated",
+        f"Balance Updated: {transaction['balance_before']} -> {transaction['balance_after']} {transaction['currency']}",
+    )
     return transaction
 
 
@@ -104,3 +136,57 @@ def get_transaction(provider_code: str, external_transaction_id: str) -> dict | 
         ),
         None,
     )
+
+
+def list_transaction_events(provider_code: str, external_transaction_id: str) -> list[dict]:
+    if not get_transaction(provider_code, external_transaction_id):
+        return []
+    return EVENTS.get(external_transaction_id, [])
+
+
+def mark_webhook_sent(provider_code: str, external_transaction_id: str) -> None:
+    transaction = get_transaction(provider_code, external_transaction_id)
+    if transaction:
+        _add_event(external_transaction_id, "webhook_sent", "Webhook Sent")
+
+
+def mark_webhook_verified(provider_code: str, external_transaction_id: str) -> None:
+    transaction = get_transaction(provider_code, external_transaction_id)
+    if transaction:
+        transaction["webhook_status"] = "delivered"
+        _add_event(external_transaction_id, "webhook_verified", "Webhook Verified")
+
+
+def mark_transaction_synced(provider_code: str, external_transaction_id: str, category: str | None = None) -> None:
+    transaction = get_transaction(provider_code, external_transaction_id)
+    if not transaction:
+        return
+    transaction["sync_status"] = "synced"
+    if category:
+        transaction["category"] = category
+    _add_event(external_transaction_id, "transaction_synced", "Transaction Synced")
+    if category:
+        _add_event(external_transaction_id, "transaction_categorized", f"Categorized as {category}")
+
+
+def record_balance_updated(
+    provider_code: str,
+    external_transaction_id: str,
+    balance_before: Decimal,
+    balance_after: Decimal,
+    currency: str,
+) -> None:
+    transaction = get_transaction(provider_code, external_transaction_id)
+    if transaction:
+        _add_event(
+            external_transaction_id,
+            "balance_updated",
+            f"Balance Updated: {balance_before} -> {balance_after} {currency}",
+        )
+
+
+def mark_transaction_failed(provider_code: str, external_transaction_id: str, reason: str) -> None:
+    transaction = get_transaction(provider_code, external_transaction_id)
+    if transaction:
+        transaction["webhook_status"] = "failed"
+        _add_event(external_transaction_id, "transaction_failed", f"Failed with reason: {reason}")

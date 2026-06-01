@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.integrations.banking.base import BankProviderClient
 from app.integrations.banking.fake_bank_client import FakeBankClient
+from app.integrations.banking.real_bank_client import RealBankClient
 from app.integrations.banking.sandbox_bank_client import SandboxBankClient
 
 
@@ -38,6 +39,7 @@ PROVIDERS = (
     ProviderDefinition("TECHCOMBANK_MOCK", "Techcombank Mock", "mock_bank", FakeBankClient, mock_console=True),
     ProviderDefinition("MOMO_MOCK", "MoMo Mock", "mock_bank", FakeBankClient, mock_console=True),
     ProviderDefinition("OPEN_BANK_PROJECT_SANDBOX", "Open Bank Project Sandbox", "sandbox", SandboxBankClient),
+    ProviderDefinition("REAL_BANK_PARTNER", "Real Bank Partner", "real_partner", RealBankClient, status="coming_soon"),
 )
 
 

@@ -45,6 +45,13 @@ export function BankProviderCard({
       <p className="mt-2 text-sm leading-6 text-white/42">
         {connection ? "Consent active. Sync to refresh balances and transaction activity." : "Connect through the provider adapter with scoped data access."}
       </p>
+      {connection && (
+        <p className="mt-3 text-xs leading-5 text-white/35">
+          {connection.connected_accounts_count} connected account{connection.connected_accounts_count === 1 ? "" : "s"}
+          <br />
+          Last sync: {connection.last_synced_at ? new Date(connection.last_synced_at).toLocaleString("vi-VN") : "Not synced yet"}
+        </p>
+      )}
 
       <div className="mt-auto pt-5">
         {!connection && (

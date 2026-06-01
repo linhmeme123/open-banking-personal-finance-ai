@@ -46,6 +46,7 @@ services:
     volumes:
       - ./frontend:/workspace
       - /workspace/node_modules
+      - /workspace/.next
 
 volumes:
   pfai_data:

@@ -75,3 +75,54 @@ class BankProviderClient(ABC):
     @abstractmethod
     def normalize_transaction(self, raw_transaction: dict[str, Any]) -> ProviderTransaction:
         raise NotImplementedError
+
+    def list_mock_accounts(self) -> list[dict[str, Any]]:
+        raise NotImplementedError("This provider does not expose a mock bank console")
+
+    def create_mock_account(self, **values: Any) -> dict[str, Any]:
+        raise NotImplementedError("This provider does not expose a mock bank console")
+
+    def list_mock_transactions(self, external_account_id: str | None = None) -> list[dict[str, Any]]:
+        raise NotImplementedError("This provider does not expose a mock bank console")
+
+    def create_mock_transaction(self, **values: Any) -> dict[str, Any]:
+        raise NotImplementedError("This provider does not expose a mock bank console")
+
+    def generate_mock_transaction(self, external_account_id: str) -> dict[str, Any]:
+        raise NotImplementedError("This provider does not expose a mock bank console")
+
+    def get_mock_transaction(self, external_transaction_id: str) -> dict[str, Any] | None:
+        raise NotImplementedError("This provider does not expose a mock bank console")
+
+    def list_mock_transaction_events(self, external_transaction_id: str) -> list[dict[str, Any]]:
+        raise NotImplementedError("This provider does not expose a mock bank console")
+
+    def record_webhook_sent(self, external_transaction_id: str) -> None:
+        pass
+
+    def get_webhook_headers(self) -> dict[str, str]:
+        return {}
+
+    def record_webhook_verified(self, external_transaction_id: str) -> None:
+        pass
+
+    def record_transaction_synced(
+        self,
+        external_transaction_id: str,
+        *,
+        category: str | None = None,
+    ) -> None:
+        pass
+
+    def record_balance_updated(
+        self,
+        external_transaction_id: str,
+        *,
+        balance_before: Decimal,
+        balance_after: Decimal,
+        currency: str,
+    ) -> None:
+        pass
+
+    def record_transaction_failed(self, external_transaction_id: str, reason: str) -> None:
+        pass

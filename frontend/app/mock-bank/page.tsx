@@ -2,22 +2,35 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Landmark, Plus, Radio, RefreshCw, Send } from "lucide-react";
+import { ArrowLeft, Clock3, Landmark, ListTree, Plus, Radio, RefreshCw, Send, WalletCards, X } from "lucide-react";
 import { Brand } from "@/components/Brand";
 import { getApiErrorMessage } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import {
   BankProvider,
+  MockBankEvent,
+  TRANSACTION_CATEGORIES,
   createMockBankAccount,
   createMockBankTransaction,
   generateMockBankTransaction,
   getMockBankAccounts,
   getMockBankProviders,
+  getMockBankTransactionEvents,
   getMockBankTransactions,
   MockBankAccount,
   MockBankTransaction,
   sendMockBankWebhook,
+  syncProvider,
 } from "@/lib/finance";
+
+function StatusBadge({ value }: { value: string }) {
+  const tone = value === "synced" || value === "delivered"
+    ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-200"
+    : value === "failed"
+      ? "border-red-300/20 bg-red-300/10 text-red-200"
+      : "border-amber-300/20 bg-amber-300/10 text-amber-100";
+  return <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${tone}`}>{value}</span>;
+}
 
 export default function MockBankPage() {
   const [providers, setProviders] = useState<BankProvider[]>([]);
@@ -30,7 +43,13 @@ export default function MockBankPage() {
   const [merchant, setMerchant] = useState("Highlands Coffee");
   const [amount, setAmount] = useState("65000");
   const [direction, setDirection] = useState("expense");
+  const [category, setCategory] = useState("");
+  const [transactionTime, setTransactionTime] = useState("");
+  const [timeline, setTimeline] = useState<MockBankEvent[]>([]);
+  const [timelineTransaction, setTimelineTransaction] = useState<MockBankTransaction | null>(null);
   const [message, setMessage] = useState("");
+  const selectedAccount = accounts.find((account) => account.external_account_id === accountId);
+  const selectedProvider = providers.find((provider) => provider.code === providerCode);
 
   async function load(nextProvider = providerCode, nextAccount = accountId) {
     if (!nextProvider) return;
@@ -60,6 +79,8 @@ export default function MockBankPage() {
         merchant_name: merchant,
         amount: direction === "expense" ? -Math.abs(Number(amount)) : Math.abs(Number(amount)),
         direction,
+        category: category || undefined,
+        transaction_time: transactionTime || undefined,
       });
       setMessage("Transaction added to the mock provider. Sync it or send a webhook.");
       await load();
@@ -92,6 +113,28 @@ export default function MockBankPage() {
     try {
       const result = await sendMockBankWebhook(providerCode, transactionId);
       setMessage(`Webhook accepted. ${result.transactions_added} transaction imported into the finance app.`);
+      await load();
+      await openTimeline(transactionId);
+    } catch (error) {
+      setMessage(getApiErrorMessage(error));
+    }
+  }
+
+  async function syncToOpenBanking() {
+    try {
+      const result = await syncProvider(providerCode);
+      setMessage(`Open Banking sync complete. ${result.created_transactions} new transactions imported.`);
+      await load();
+    } catch (error) {
+      setMessage(getApiErrorMessage(error));
+    }
+  }
+
+  async function openTimeline(transactionId: string) {
+    try {
+      const transaction = transactions.find((item) => item.external_transaction_id === transactionId) || null;
+      setTimelineTransaction(transaction);
+      setTimeline(await getMockBankTransactionEvents(providerCode, transactionId));
     } catch (error) {
       setMessage(getApiErrorMessage(error));
     }
@@ -127,6 +170,20 @@ export default function MockBankPage() {
           </select>
         </section>
 
+        {selectedAccount && (
+          <section className="glass-panel grid gap-4 p-5 sm:grid-cols-[1fr_auto]">
+            <div>
+              <p className="eyebrow">Current balance</p>
+              <p className="mt-2 text-3xl font-semibold text-white">{formatCurrency(selectedAccount.balance)}</p>
+              <p className="mt-3 text-sm text-white/42">{selectedAccount.account_type} · {selectedProvider?.name}</p>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-white/42">
+              <WalletCards className="h-5 w-5 text-pink-200" aria-hidden="true" />
+              <span>Updated<br />{new Date(selectedAccount.last_updated_at).toLocaleString("vi-VN")}</span>
+            </div>
+          </section>
+        )}
+
         <section className="glass-panel flex flex-wrap gap-3 p-4">
           <input className="form-control min-w-60 flex-1" onChange={(event) => setAccountName(event.target.value)} placeholder="New account name" value={accountName} />
           <button className="button-secondary" disabled={!providerCode || !accountName.trim()} onClick={createAccount} type="button">
@@ -135,7 +192,7 @@ export default function MockBankPage() {
           </button>
         </section>
 
-        <section className="glass-panel grid gap-3 p-4 md:grid-cols-5">
+        <section className="glass-panel grid gap-3 p-4 md:grid-cols-3">
           <input className="form-control" onChange={(event) => setDescription(event.target.value)} placeholder="Description" value={description} />
           <input className="form-control" onChange={(event) => setMerchant(event.target.value)} placeholder="Merchant" value={merchant} />
           <input className="form-control" min="0" onChange={(event) => setAmount(event.target.value)} placeholder="Amount" type="number" value={amount} />
@@ -143,9 +200,14 @@ export default function MockBankPage() {
             <option value="expense">Expense</option>
             <option value="income">Income</option>
           </select>
+          <select className="form-control" onChange={(event) => setCategory(event.target.value)} value={category}>
+            <option value="">Auto category</option>
+            {TRANSACTION_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+          <input className="form-control" onChange={(event) => setTransactionTime(event.target.value)} type="datetime-local" value={transactionTime} />
           <button className="button-primary" disabled={!accountId} onClick={createTransaction} type="button">
             <Plus className="h-4 w-4" aria-hidden="true" />
-            Add
+            Add Transaction
           </button>
         </section>
 
@@ -154,16 +216,20 @@ export default function MockBankPage() {
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Generate random
           </button>
+          <button className="button-secondary" disabled={!accountId} onClick={syncToOpenBanking} type="button">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Sync to Open Banking
+          </button>
           <Link className="button-secondary" href="/app/open-banking">
             <Landmark className="h-4 w-4" aria-hidden="true" />
-            Open Banking
+            Open Velora App
           </Link>
         </div>
 
         <section className="glass-panel overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[1120px] text-left text-sm">
             <thead className="border-b border-white/[0.08] bg-white/[0.025] text-[10px] uppercase text-white/35">
-              <tr><th className="px-5 py-4">Date</th><th className="px-5 py-4">Activity</th><th className="px-5 py-4">Amount</th><th className="px-5 py-4 text-right">Webhook</th></tr>
+              <tr><th className="px-5 py-4">Date</th><th className="px-5 py-4">Activity</th><th className="px-5 py-4">Amount</th><th className="px-5 py-4">Balance after</th><th className="px-5 py-4">Category</th><th className="px-5 py-4">Webhook</th><th className="px-5 py-4">Sync</th><th className="px-5 py-4 text-right">Actions</th></tr>
             </thead>
             <tbody>
               {transactions.map((item) => (
@@ -171,18 +237,49 @@ export default function MockBankPage() {
                   <td className="px-5 py-4 text-white/42">{new Date(item.transaction_time).toLocaleString("vi-VN")}</td>
                   <td className="px-5 py-4"><p className="text-white">{item.merchant_name || item.description}</p><p className="mt-1 text-xs text-white/32">{item.description}</p></td>
                   <td className={`px-5 py-4 font-semibold ${item.direction === "income" ? "text-emerald-300" : "text-white"}`}>{formatCurrency(item.amount)}</td>
+                  <td className="px-5 py-4 text-white/62">{formatCurrency(item.balance_after)}</td>
+                  <td className="px-5 py-4 text-white/62">{item.category || "Auto on sync"}</td>
+                  <td className="px-5 py-4"><StatusBadge value={item.webhook_status} /></td>
+                  <td className="px-5 py-4"><StatusBadge value={item.sync_status} /></td>
                   <td className="px-5 py-4 text-right">
-                    <button aria-label="Send webhook" className="inline-flex rounded-md p-2 text-pink-200 hover:bg-pink-300/10" onClick={() => sendWebhook(item.external_transaction_id)} title="Send webhook" type="button">
+                    <button className="button-secondary mr-2 px-3 py-2 text-xs" onClick={() => openTimeline(item.external_transaction_id)} type="button">
+                      <ListTree className="h-4 w-4" aria-hidden="true" />
+                      Timeline
+                    </button>
+                    <button className="button-secondary px-3 py-2 text-xs" onClick={() => sendWebhook(item.external_transaction_id)} type="button">
                       <Send className="h-4 w-4" aria-hidden="true" />
+                      Send Webhook
                     </button>
                   </td>
                 </tr>
               ))}
-              {!transactions.length && <tr><td className="px-5 py-8 text-white/42" colSpan={4}><Radio className="mr-2 inline h-4 w-4" aria-hidden="true" />No mock activity yet.</td></tr>}
+              {!transactions.length && <tr><td className="px-5 py-8 text-white/42" colSpan={8}><Radio className="mr-2 inline h-4 w-4" aria-hidden="true" />No mock activity yet.</td></tr>}
             </tbody>
           </table>
         </section>
       </div>
+
+      {timelineTransaction && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/60">
+          <aside className="h-full w-full max-w-md overflow-y-auto border-l border-white/[0.08] bg-[#100c14] p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="eyebrow">Transaction timeline</p>
+                <h2 className="mt-2 text-xl font-semibold text-white">{timelineTransaction.merchant_name || timelineTransaction.description}</h2>
+              </div>
+              <button className="rounded-md p-2 text-white/50 hover:bg-white/[0.06]" onClick={() => setTimelineTransaction(null)} type="button"><X className="h-4 w-4" aria-hidden="true" /></button>
+            </div>
+            <div className="mt-7 grid gap-4">
+              {timeline.map((event) => (
+                <div className="border-l border-pink-300/30 pl-4" key={`${event.event_type}-${event.created_at}`}>
+                  <div className="flex items-center gap-2 text-xs text-white/35"><Clock3 className="h-3 w-3" aria-hidden="true" />{new Date(event.created_at).toLocaleString("vi-VN")}</div>
+                  <p className="mt-1 text-sm text-white/78">{event.message}</p>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      )}
     </main>
   );
 }

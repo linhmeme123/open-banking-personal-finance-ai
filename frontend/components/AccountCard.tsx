@@ -18,6 +18,7 @@ export function AccountCard({ account }: { account: Account }) {
       <h3 className="mt-5 text-base font-semibold text-white">{account.account_name}</h3>
       <p className="mt-1 text-xs text-white/38">{account.provider_name}</p>
       <p className="mt-6 text-2xl font-semibold text-white">{formatCurrency(account.balance, account.currency)}</p>
+      <p className="mt-3 text-xs text-white/32">Last sync: {account.last_synced_at ? new Date(account.last_synced_at).toLocaleString("vi-VN") : "Not synced yet"}</p>
     </article>
   );
 }

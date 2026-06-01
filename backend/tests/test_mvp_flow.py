@@ -180,20 +180,55 @@ class MvpFlowTest(unittest.TestCase):
         self.client.post("/api/open-banking/sync", headers=headers, json={"provider_code": "VPBANK_MOCK"})
         accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
 
-        generated = self.client.post(
-            "/api/mock-bank/transactions/generate",
-            json={"provider_code": "VPBANK_MOCK", "external_account_id": accounts[0]["external_account_id"]},
+        created = self.client.post(
+            "/api/mock-bank/transactions",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": accounts[0]["external_account_id"],
+                "description": "Highlands Coffee",
+                "merchant_name": "Highlands Coffee",
+                "amount": 65000,
+                "direction": "expense",
+            },
         )
-        self.assertEqual(generated.status_code, 200)
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(created.json()["webhook_status"], "pending")
+        self.assertEqual(created.json()["sync_status"], "pending")
+        self.assertEqual(created.json()["balance_after"], created.json()["balance_before"] - 65000)
         webhook = self.client.post(
             "/api/mock-bank/webhooks/send",
             json={
                 "provider_code": "VPBANK_MOCK",
-                "external_transaction_id": generated.json()["external_transaction_id"],
+                "external_transaction_id": created.json()["external_transaction_id"],
             },
         )
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual(webhook.json()["transactions_added"], 1)
+        transactions = self.client.get(
+            f"/api/mock-bank/transactions?provider_code=VPBANK_MOCK&external_account_id={accounts[0]['external_account_id']}"
+        )
+        synced = next(
+            item
+            for item in transactions.json()
+            if item["external_transaction_id"] == created.json()["external_transaction_id"]
+        )
+        self.assertEqual(synced["webhook_status"], "delivered")
+        self.assertEqual(synced["sync_status"], "synced")
+        self.assertEqual(synced["category"], "food")
+        events = self.client.get(
+            f"/api/mock-bank/transactions/{created.json()['external_transaction_id']}/events?provider_code=VPBANK_MOCK"
+        )
+        self.assertEqual(events.status_code, 200)
+        event_types = [event["event_type"] for event in events.json()]
+        self.assertIn("webhook_sent", event_types)
+        self.assertIn("webhook_verified", event_types)
+        self.assertIn("transaction_synced", event_types)
+        self.assertIn("transaction_categorized", event_types)
+
+    def test_public_sandbox_is_not_exposed_as_mock_console(self):
+        response = self.client.get("/api/mock-bank/accounts?provider_code=OPEN_BANK_PROJECT_SANDBOX")
+
+        self.assertEqual(response.status_code, 409)
 
 
 if __name__ == "__main__":

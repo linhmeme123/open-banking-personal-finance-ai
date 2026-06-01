@@ -19,7 +19,7 @@ from app.models.user import User
 from app.services.consent_service import create_consent_event
 
 
-def serialize_connection(connection: BankConnection):
+def serialize_connection(connection: BankConnection, db: Session):
     return {
         "id": connection.id,
         "provider_code": connection.provider.code,
@@ -29,6 +29,11 @@ def serialize_connection(connection: BankConnection):
         "status": connection.status,
         "consent_scope": connection.consent_scope,
         "last_synced_at": connection.last_synced_at.isoformat() if connection.last_synced_at else None,
+        "connected_accounts_count": (
+            db.query(Account)
+            .filter(Account.user_id == connection.user_id, Account.provider_id == connection.provider_id)
+            .count()
+        ),
     }
 
 
@@ -44,7 +49,7 @@ def list_connections(db: Session, user_id: int):
         .order_by(BankProvider.name.asc())
         .all()
     )
-    return [serialize_connection(connection) for connection in connections]
+    return [serialize_connection(connection, db) for connection in connections]
 
 
 def get_or_create_provider(db: Session, provider_code: str) -> BankProvider:
@@ -89,7 +94,7 @@ def connect_provider(db: Session, user: User, provider_code: str, scope: str):
     db.commit()
     db.refresh(connection)
     create_consent_event(db, user.id, provider.code, scope, "granted")
-    return serialize_connection(connection)
+    return serialize_connection(connection, db)
 
 
 def _upsert_account(db: Session, user_id: int, provider: BankProvider, provider_account) -> tuple[Account, bool]:
@@ -118,9 +123,9 @@ def _upsert_account(db: Session, user_id: int, provider: BankProvider, provider_
     return account, created
 
 
-def _save_transaction(db: Session, account: Account, item: ProviderTransaction) -> bool:
+def _save_transaction(db: Session, account: Account, item: ProviderTransaction) -> tuple[bool, str | None]:
     if db.query(Transaction).filter(Transaction.external_id == item.external_transaction_id).first():
-        return False
+        return False, None
     category, confidence = categorize_transaction(item.description, item.merchant_name)
     db.add(
         Transaction(
@@ -136,7 +141,7 @@ def _save_transaction(db: Session, account: Account, item: ProviderTransaction) 
             category_confidence=confidence,
         )
     )
-    return True
+    return True, category
 
 
 def sync_provider(db: Session, user_id: int, provider_code: str):
@@ -158,7 +163,10 @@ def sync_provider(db: Session, user_id: int, provider_code: str):
         accounts_synced += 1
         latest_balance += provider_account.balance
         for item in client.get_transactions(connection, account, since=connection.last_synced_at):
-            transactions_added += int(_save_transaction(db, account, item))
+            transaction_added, category = _save_transaction(db, account, item)
+            transactions_added += int(transaction_added)
+            if transaction_added:
+                client.record_transaction_synced(item.external_transaction_id, category=category)
 
     connection.last_synced_at = datetime.utcnow()
     db.commit()
@@ -183,6 +191,7 @@ def process_transaction_webhook(db: Session, payload: dict[str, Any], headers: d
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     item = client.normalize_transaction(payload["transaction"])
+    client.record_webhook_verified(item.external_transaction_id)
     provider = get_or_create_provider(db, provider_code)
     account = (
         db.query(Account)
@@ -193,8 +202,17 @@ def process_transaction_webhook(db: Session, payload: dict[str, Any], headers: d
     if not account:
         raise HTTPException(status_code=404, detail="Linked account not found; sync the provider first")
 
-    transactions_added = int(_save_transaction(db, account, item))
+    transaction_added, category = _save_transaction(db, account, item)
+    transactions_added = int(transaction_added)
     if transactions_added:
+        balance_before = account.balance
         account.balance += item.amount
+        client.record_transaction_synced(item.external_transaction_id, category=category)
+        client.record_balance_updated(
+            item.external_transaction_id,
+            balance_before=balance_before,
+            balance_after=account.balance,
+            currency=account.currency,
+        )
     db.commit()
     return {"status": "accepted", "provider_code": provider_code, "transactions_added": transactions_added}

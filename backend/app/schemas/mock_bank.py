@@ -1,6 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -18,7 +20,9 @@ class MockBankTransactionCreate(BaseModel):
     description: str
     merchant_name: str | None = None
     amount: Decimal
-    direction: str
+    direction: Literal["income", "expense"]
+    category: str | None = None
+    transaction_time: datetime | None = None
 
 
 class MockBankGenerateRequest(BaseModel):
