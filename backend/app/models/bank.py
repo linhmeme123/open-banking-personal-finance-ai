@@ -34,9 +34,10 @@ class BankConnection(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     provider_id: Mapped[int] = mapped_column(ForeignKey("bank_providers.id"))
-    status: Mapped[str] = mapped_column(String(50), default="connected")
+    status: Mapped[str] = mapped_column(String(50), default="initiated")
     consent_scope: Mapped[str] = mapped_column(String(255))
-    connected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    selected_account_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="bank_connections")

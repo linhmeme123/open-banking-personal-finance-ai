@@ -8,6 +8,7 @@ from app.schemas.auth import (
 )
 from app.schemas.bank import (
     BankConnectionOut,
+    ProviderAuthorizeRequest,
     ProviderConnectRequest,
     ProviderOut,
     SyncRequest,

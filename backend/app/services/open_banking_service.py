@@ -28,6 +28,7 @@ def serialize_connection(connection: BankConnection, db: Session):
         "logo_url": connection.provider.logo_url,
         "status": connection.status,
         "consent_scope": connection.consent_scope,
+        "selected_account_ids": connection.selected_account_ids,
         "last_synced_at": connection.last_synced_at.isoformat() if connection.last_synced_at else None,
         "connected_accounts_count": (
             db.query(Account)
@@ -68,47 +69,114 @@ def get_or_create_provider(db: Session, provider_code: str) -> BankProvider:
     return provider
 
 
-def connect_provider(db: Session, user: User, provider_code: str, scope: str):
+def _get_connection(db: Session, user_id: int, provider_id: int) -> BankConnection | None:
+    return (
+        db.query(BankConnection)
+        .filter(BankConnection.user_id == user_id, BankConnection.provider_id == provider_id)
+        .first()
+    )
+
+
+def initiate_connection(db: Session, user: User, provider_code: str):
     provider = get_or_create_provider(db, provider_code)
     if provider.status != "available":
         raise HTTPException(status_code=409, detail="Provider is not available yet")
 
     client = get_provider_client(db, provider.code)
-    result = client.connect(user, provider, scope)
-    connection = (
-        db.query(BankConnection)
-        .filter(BankConnection.user_id == user.id, BankConnection.provider_id == provider.id)
-        .first()
-    )
+    connection = _get_connection(db, user.id, provider.id)
     if connection:
-        connection.status = result.status
-        connection.consent_scope = scope
+        connection.status = "initiated"
+        connection.consent_scope = ""
+        connection.selected_account_ids = []
+        connection.connected_at = None
     else:
         connection = BankConnection(
             user_id=user.id,
             provider_id=provider.id,
-            status=result.status,
-            consent_scope=scope,
+            status="initiated",
+            consent_scope="",
+            selected_account_ids=[],
         )
         db.add(connection)
+    db.flush()
+    authorization = client.initiate_authorization(user, provider)
+    connection.status = "pending_authorization"
+    db.commit()
+    db.refresh(connection)
+    return {
+        "connection": serialize_connection(connection, db),
+        "provider": {
+            "code": provider.code,
+            "name": provider.name,
+            "type": provider.provider_type,
+        },
+        "required_fields": authorization.required_fields,
+        "available_scopes": authorization.available_scopes,
+        "available_accounts": authorization.available_accounts,
+    }
+
+
+def complete_connection(db: Session, user_id: int, provider_code: str):
+    provider = get_or_create_provider(db, provider_code)
+    connection = _get_connection(db, user_id, provider.id)
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection attempt not found")
+    if connection.status not in {"authorized", "connected"}:
+        raise HTTPException(status_code=409, detail="Authorize consent before completing this connection")
+    if connection.status == "authorized":
+        connection.status = "connected"
+        connection.connected_at = datetime.utcnow()
+        db.commit()
+        db.refresh(connection)
+    return serialize_connection(connection, db)
+
+
+def authorize_connection(
+    db: Session,
+    user: User,
+    provider_code: str,
+    credentials: dict[str, str | None],
+    scopes: list[str],
+    selected_account_ids: list[str],
+):
+    provider = get_or_create_provider(db, provider_code)
+    connection = _get_connection(db, user.id, provider.id)
+    if not connection or connection.status not in {"pending_authorization", "failed"}:
+        raise HTTPException(status_code=409, detail="Start a connection attempt before authorizing consent")
+    invalid_scopes = sorted(set(scopes) - set(provider.supported_scopes))
+    if invalid_scopes:
+        raise HTTPException(status_code=422, detail=f"Unsupported consent scopes: {', '.join(invalid_scopes)}")
+    if not scopes:
+        raise HTTPException(status_code=422, detail="Select at least one consent scope")
+
+    client = get_provider_client(db, provider.code)
+    scope = " ".join(scopes)
+    try:
+        result = client.authorize(user, provider, credentials, scope, selected_account_ids)
+    except ValueError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+
+    connection.status = result.status
+    connection.consent_scope = scope
+    connection.selected_account_ids = selected_account_ids
     db.commit()
     db.refresh(connection)
     create_consent_event(db, user.id, provider.code, scope, "granted")
-    return serialize_connection(connection, db)
+    completed = complete_connection(db, user.id, provider.code)
+    return {
+        "connection": completed,
+        "selected_accounts": selected_account_ids,
+    }
 
 
 def disconnect_provider(db: Session, user_id: int, provider_code: str):
     provider = get_or_create_provider(db, provider_code)
-    connection = (
-        db.query(BankConnection)
-        .filter(BankConnection.user_id == user_id, BankConnection.provider_id == provider.id)
-        .first()
-    )
+    connection = _get_connection(db, user_id, provider.id)
     if not connection:
         raise HTTPException(status_code=404, detail="Provider connection not found")
 
     scope = connection.consent_scope
-    db.delete(connection)
+    connection.status = "revoked"
     db.commit()
     create_consent_event(db, user_id, provider.code, scope, "revoked")
     return {"status": "disconnected", "provider_code": provider.code}
@@ -168,8 +236,8 @@ def sync_provider(db: Session, user_id: int, provider_code: str):
         .filter(BankConnection.user_id == user_id, BankConnection.provider_id == provider.id)
         .first()
     )
-    if not connection:
-        raise HTTPException(status_code=409, detail="Connect provider before syncing")
+    if not connection or connection.status != "connected":
+        raise HTTPException(status_code=409, detail="Authorize and connect this provider before syncing")
 
     client = get_provider_client(db, provider.code)
     accounts_synced = 0

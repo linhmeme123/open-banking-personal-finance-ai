@@ -9,7 +9,7 @@ from app.integrations.banking.real_bank_client import RealBankClient
 from app.integrations.banking.sandbox_bank_client import SandboxBankClient
 
 
-DEFAULT_SCOPES = ["accounts:read", "transactions:read", "balance:read"]
+DEFAULT_SCOPES = ["accounts:read", "balances:read", "transactions:read"]
 
 
 @dataclass(frozen=True)

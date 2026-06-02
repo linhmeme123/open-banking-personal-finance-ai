@@ -4,10 +4,12 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.bank import ProviderConnectRequest, SyncRequest
+from app.schemas.bank import ProviderAuthorizeRequest, ProviderConnectRequest, SyncRequest
 from app.services.open_banking_service import (
-    connect_provider,
+    authorize_connection,
+    complete_connection,
     disconnect_provider,
+    initiate_connection,
     list_connections,
     list_providers,
     sync_provider,
@@ -35,7 +37,46 @@ def connect(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return connect_provider(db, current_user, payload.provider_code, payload.scope)
+    return initiate_connection(db, current_user, payload.provider_code)
+
+
+@router.post("/connect/initiate")
+def initiate(
+    payload: ProviderConnectRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return initiate_connection(db, current_user, payload.provider_code)
+
+
+@router.post("/connect/authorize")
+def authorize(
+    payload: ProviderAuthorizeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return authorize_connection(
+        db,
+        current_user,
+        payload.provider_code,
+        {
+            "username": payload.username,
+            "customer_id": payload.customer_id,
+            "account_number": payload.account_number,
+            "otp_code": payload.otp_code,
+        },
+        payload.scopes,
+        payload.selected_account_ids,
+    )
+
+
+@router.post("/connect/complete")
+def complete(
+    payload: ProviderConnectRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return complete_connection(db, current_user.id, payload.provider_code)
 
 
 @router.post("/sync")

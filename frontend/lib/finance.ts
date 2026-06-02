@@ -34,8 +34,24 @@ export type BankConnection = {
   logo_url: string | null;
   status: string;
   consent_scope: string;
+  selected_account_ids: string[];
   last_synced_at: string | null;
   connected_accounts_count: number;
+};
+
+export type AuthorizationAccount = {
+  external_account_id: string;
+  account_name: string;
+  account_type: string;
+  currency: string;
+};
+
+export type ConnectionInitiation = {
+  connection: BankConnection;
+  provider: Pick<BankProvider, "code" | "name" | "type">;
+  required_fields: string[];
+  available_scopes: string[];
+  available_accounts: AuthorizationAccount[];
 };
 
 export type Account = {
@@ -106,11 +122,19 @@ export function getConnections() {
   return apiGet<BankConnection[]>("/api/open-banking/connections");
 }
 
-export function connectProvider(providerCode: string) {
-  return apiPost<BankConnection>("/api/open-banking/connect", {
-    provider_code: providerCode,
-    scope: "accounts:read transactions:read balance:read",
-  });
+export function initiateProviderConnection(providerCode: string) {
+  return apiPost<ConnectionInitiation>("/api/open-banking/connect/initiate", { provider_code: providerCode });
+}
+
+export function authorizeProviderConnection(values: {
+  provider_code: string;
+  username: string;
+  account_number: string;
+  otp_code: string;
+  scopes: string[];
+  selected_account_ids: string[];
+}) {
+  return apiPost<{ connection: BankConnection; selected_accounts: string[] }>("/api/open-banking/connect/authorize", values);
 }
 
 export function disconnectProvider(providerCode: string) {

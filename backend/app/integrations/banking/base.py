@@ -42,6 +42,14 @@ class ProviderConnectionResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class ProviderAuthorization:
+    provider_code: str
+    required_fields: list[str]
+    available_scopes: list[str]
+    available_accounts: list[dict[str, Any]]
+
+
 class BankProviderClient(ABC):
     def __init__(self, db: Session, provider_code: str):
         self.db = db
@@ -49,6 +57,21 @@ class BankProviderClient(ABC):
 
     @abstractmethod
     def connect(self, user: User, provider: BankProvider, scope: str) -> ProviderConnectionResult:
+        raise NotImplementedError
+
+    @abstractmethod
+    def initiate_authorization(self, user: User, provider: BankProvider) -> ProviderAuthorization:
+        raise NotImplementedError
+
+    @abstractmethod
+    def authorize(
+        self,
+        user: User,
+        provider: BankProvider,
+        credentials: dict[str, str | None],
+        scope: str,
+        selected_account_ids: list[str],
+    ) -> ProviderConnectionResult:
         raise NotImplementedError
 
     @abstractmethod

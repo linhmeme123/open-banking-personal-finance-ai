@@ -36,8 +36,10 @@ class MvpFlowTest(unittest.TestCase):
         os.unlink(cls.db_file.name)
 
     def setUp(self):
-        self.base.metadata.drop_all(bind=self.engine)
-        self.base.metadata.create_all(bind=self.engine)
+        from app.models.bank import BankProvider
+
+        BankProvider.metadata.drop_all(bind=self.engine)
+        BankProvider.metadata.create_all(bind=self.engine)
         from app.integrations.banking.fake_bank_store import reset_store
 
         reset_store()
@@ -61,6 +63,31 @@ class MvpFlowTest(unittest.TestCase):
         token = response.json()["access_token"]
         return {"Authorization": f"Bearer {token}"}
 
+    def connect_mock_provider(self, headers, provider_code="VPBANK_MOCK", scopes=None):
+        initiated = self.client.post(
+            "/api/open-banking/connect/initiate",
+            headers=headers,
+            json={"provider_code": provider_code},
+        )
+        self.assertEqual(initiated.status_code, 200)
+        selected_account_ids = [
+            account["external_account_id"]
+            for account in initiated.json()["available_accounts"]
+        ]
+        authorized = self.client.post(
+            "/api/open-banking/connect/authorize",
+            headers=headers,
+            json={
+                "provider_code": provider_code,
+                "username": "demo",
+                "otp_code": "123456",
+                "scopes": scopes or ["accounts:read", "balances:read", "transactions:read"],
+                "selected_account_ids": selected_account_ids,
+            },
+        )
+        self.assertEqual(authorized.status_code, 200)
+        return authorized.json()["connection"]
+
     def test_protected_routes_reject_missing_token(self):
         response = self.client.get("/api/accounts")
 
@@ -73,13 +100,8 @@ class MvpFlowTest(unittest.TestCase):
         self.assertEqual(providers.status_code, 200)
         self.assertGreaterEqual(len(providers.json()), 3)
 
-        connected = self.client.post(
-            "/api/open-banking/connect",
-            headers=headers,
-            json={"provider_code": "VPBANK_MOCK", "scope": "accounts:read transactions:read"},
-        )
-        self.assertEqual(connected.status_code, 200)
-        self.assertEqual(connected.json()["status"], "connected")
+        connected = self.connect_mock_provider(headers)
+        self.assertEqual(connected["status"], "connected")
 
         connections = self.client.get("/api/open-banking/connections", headers=headers)
         self.assertEqual(connections.status_code, 200)
@@ -125,13 +147,72 @@ class MvpFlowTest(unittest.TestCase):
         self.assertEqual(categorized.status_code, 200)
         self.assertEqual(categorized.json()["category"], "food")
 
+    def test_connection_requires_authorization_and_rejects_wrong_otp(self):
+        headers = self.auth_headers()
+        initiated = self.client.post(
+            "/api/open-banking/connect/initiate",
+            headers=headers,
+            json={"provider_code": "VPBANK_MOCK"},
+        )
+        self.assertEqual(initiated.status_code, 200)
+        self.assertEqual(initiated.json()["connection"]["status"], "pending_authorization")
+        self.assertEqual(self.client.get("/api/consents", headers=headers).json(), [])
+
+        selected_account_ids = [
+            account["external_account_id"]
+            for account in initiated.json()["available_accounts"]
+        ]
+        rejected = self.client.post(
+            "/api/open-banking/connect/authorize",
+            headers=headers,
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "username": "demo",
+                "otp_code": "000000",
+                "scopes": ["accounts:read", "balances:read", "transactions:read"],
+                "selected_account_ids": selected_account_ids,
+            },
+        )
+        self.assertEqual(rejected.status_code, 401)
+        self.assertIn("Invalid OTP", rejected.json()["detail"])
+        connection = self.client.get("/api/open-banking/connections", headers=headers).json()[0]
+        self.assertEqual(connection["status"], "pending_authorization")
+        blocked_sync = self.client.post(
+            "/api/open-banking/sync",
+            headers=headers,
+            json={"provider_code": "VPBANK_MOCK"},
+        )
+        self.assertEqual(blocked_sync.status_code, 409)
+
+    def test_mock_connection_accepts_a_fake_customer_identifier(self):
+        headers = self.auth_headers()
+        initiated = self.client.post(
+            "/api/open-banking/connect/initiate",
+            headers=headers,
+            json={"provider_code": "VPBANK_MOCK"},
+        )
+        selected_account_ids = [
+            account["external_account_id"]
+            for account in initiated.json()["available_accounts"]
+        ]
+        authorized = self.client.post(
+            "/api/open-banking/connect/authorize",
+            headers=headers,
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "username": "HOANG THUY LINH",
+                "account_number": "0345678910",
+                "otp_code": "123456",
+                "scopes": ["accounts:read", "balances:read", "transactions:read"],
+                "selected_account_ids": selected_account_ids,
+            },
+        )
+        self.assertEqual(authorized.status_code, 200)
+        self.assertEqual(authorized.json()["connection"]["status"], "connected")
+
     def test_budgets_insights_and_chat_are_user_scoped(self):
         headers = self.auth_headers()
-        self.client.post(
-            "/api/open-banking/connect",
-            headers=headers,
-            json={"provider_code": "VPBANK_MOCK", "scope": "accounts:read transactions:read"},
-        )
+        self.connect_mock_provider(headers)
         self.client.post("/api/open-banking/sync", headers=headers, json={"provider_code": "VPBANK_MOCK"})
 
         budget = self.client.post(
@@ -175,11 +256,7 @@ class MvpFlowTest(unittest.TestCase):
 
     def test_ai_chat_calls_selected_provider_with_summarized_user_context(self):
         headers = self.auth_headers()
-        self.client.post(
-            "/api/open-banking/connect",
-            headers=headers,
-            json={"provider_code": "VPBANK_MOCK", "scope": "accounts:read transactions:read"},
-        )
+        self.connect_mock_provider(headers)
         self.client.post("/api/open-banking/sync", headers=headers, json={"provider_code": "VPBANK_MOCK"})
 
         import app.services.ai_coach_service as coach_service
@@ -248,11 +325,7 @@ class MvpFlowTest(unittest.TestCase):
 
     def test_mock_bank_webhook_uses_provider_adapter(self):
         headers = self.auth_headers()
-        self.client.post(
-            "/api/open-banking/connect",
-            headers=headers,
-            json={"provider_code": "VPBANK_MOCK"},
-        )
+        self.connect_mock_provider(headers)
         self.client.post("/api/open-banking/sync", headers=headers, json={"provider_code": "VPBANK_MOCK"})
         accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
 
@@ -304,12 +377,7 @@ class MvpFlowTest(unittest.TestCase):
 
     def test_mock_bank_webhook_creates_local_account_after_connect_without_sync(self):
         headers = self.auth_headers()
-        connected = self.client.post(
-            "/api/open-banking/connect",
-            headers=headers,
-            json={"provider_code": "vpbank_mock"},
-        )
-        self.assertEqual(connected.status_code, 200)
+        self.connect_mock_provider(headers, "vpbank_mock")
         accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
         source_account = accounts[0]
         created = self.client.post(
@@ -399,11 +467,7 @@ class MvpFlowTest(unittest.TestCase):
 
     def test_disconnect_provider_revokes_consent_and_blocks_future_pushes(self):
         headers = self.auth_headers()
-        self.client.post(
-            "/api/open-banking/connect",
-            headers=headers,
-            json={"provider_code": "VPBANK_MOCK"},
-        )
+        self.connect_mock_provider(headers)
 
         disconnected = self.client.post(
             "/api/open-banking/disconnect",
@@ -413,7 +477,7 @@ class MvpFlowTest(unittest.TestCase):
         self.assertEqual(disconnected.status_code, 200)
         self.assertEqual(disconnected.json()["status"], "disconnected")
         connections = self.client.get("/api/open-banking/connections", headers=headers)
-        self.assertEqual(connections.json(), [])
+        self.assertEqual(connections.json()[0]["status"], "revoked")
         consents = self.client.get("/api/consents", headers=headers)
         self.assertEqual(consents.json()[0]["action"], "revoked")
 
@@ -440,11 +504,7 @@ class MvpFlowTest(unittest.TestCase):
 
     def test_mock_bank_cycling_transaction_is_visible_as_transport_after_push(self):
         headers = self.auth_headers()
-        self.client.post(
-            "/api/open-banking/connect",
-            headers=headers,
-            json={"provider_code": "VPBANK_MOCK"},
-        )
+        self.connect_mock_provider(headers)
         accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
         created = self.client.post(
             "/api/mock-bank/transactions",
@@ -477,11 +537,7 @@ class MvpFlowTest(unittest.TestCase):
 
     def test_bank_transaction_webhook_route_normalizes_json_payload(self):
         headers = self.auth_headers()
-        self.client.post(
-            "/api/open-banking/connect",
-            headers=headers,
-            json={"provider_code": "VPBANK_MOCK"},
-        )
+        self.connect_mock_provider(headers)
         accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
         created = self.client.post(
             "/api/mock-bank/transactions",

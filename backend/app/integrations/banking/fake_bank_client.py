@@ -6,6 +6,7 @@ from app.integrations.banking import fake_bank_store
 from app.integrations.banking.base import (
     BankProviderClient,
     ProviderAccount,
+    ProviderAuthorization,
     ProviderConnectionResult,
     ProviderTransaction,
 )
@@ -16,11 +17,51 @@ from app.models.user import User
 
 class FakeBankClient(BankProviderClient):
     def connect(self, user: User, provider: BankProvider, scope: str) -> ProviderConnectionResult:
-        fake_bank_store.list_accounts(provider.code)
-        return ProviderConnectionResult(provider_code=provider.code, status="connected")
+        raise NotImplementedError("Use the authorization flow to connect this provider")
+
+    def initiate_authorization(self, user: User, provider: BankProvider) -> ProviderAuthorization:
+        accounts = fake_bank_store.list_accounts(provider.code)
+        return ProviderAuthorization(
+            provider_code=provider.code,
+            required_fields=["username", "otp_code"],
+            available_scopes=list(provider.supported_scopes),
+            available_accounts=[
+                {
+                    "external_account_id": account["external_account_id"],
+                    "account_name": account["account_name"],
+                    "account_type": account["account_type"],
+                    "currency": account["currency"],
+                }
+                for account in accounts
+            ],
+        )
+
+    def authorize(
+        self,
+        user: User,
+        provider: BankProvider,
+        credentials: dict[str, str | None],
+        scope: str,
+        selected_account_ids: list[str],
+    ) -> ProviderConnectionResult:
+        if not (credentials.get("username") or credentials.get("customer_id")):
+            raise ValueError("Enter a mock bank username or customer ID")
+        if credentials.get("otp_code") != "123456":
+            raise ValueError("Invalid OTP code. Use 123456 for this demo.")
+        available_ids = {account["external_account_id"] for account in fake_bank_store.list_accounts(provider.code)}
+        if not selected_account_ids:
+            raise ValueError("Select at least one account to share")
+        if not set(selected_account_ids).issubset(available_ids):
+            raise ValueError("One or more selected accounts are not available")
+        return ProviderConnectionResult(provider_code=provider.code, status="authorized")
 
     def get_accounts(self, connection: BankConnection) -> list[ProviderAccount]:
-        return [self.normalize_account(item) for item in fake_bank_store.list_accounts(self.provider_code)]
+        selected_ids = set(connection.selected_account_ids)
+        return [
+            self.normalize_account(item)
+            for item in fake_bank_store.list_accounts(self.provider_code)
+            if item["external_account_id"] in selected_ids
+        ]
 
     def get_transactions(self, connection: BankConnection, account: Account, since=None) -> list[ProviderTransaction]:
         items = fake_bank_store.list_transactions(self.provider_code, account.external_account_id)

@@ -27,7 +27,7 @@ if not provider:
             name="VPBank Mock",
             provider_type="mock_bank",
             status="available",
-            supported_scopes=["accounts:read", "transactions:read", "balance:read"],
+            supported_scopes=["accounts:read", "balances:read", "transactions:read"],
         )
     )
 

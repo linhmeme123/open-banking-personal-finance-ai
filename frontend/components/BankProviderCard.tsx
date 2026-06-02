@@ -3,7 +3,7 @@ import { BankConnection, BankProvider, ProviderType } from "@/lib/finance";
 
 const TYPE_LABELS: Record<ProviderType, string> = {
   mock_bank: "Mock bank",
-  sandbox: "Public sandbox",
+  sandbox: "Sandbox",
   real_partner: "Real partner",
 };
 
@@ -48,8 +48,10 @@ export function BankProviderCard({
         {connection
           ? "Consent active. Sync to refresh balances and transaction activity."
           : provider.type === "mock_bank"
-            ? "Demo connection for local testing. No card number or bank credentials are required."
-            : "Connect through the provider adapter with scoped data access."}
+            ? "Authorize with mock bank credentials, select accounts, and grant scoped access."
+            : provider.type === "sandbox"
+              ? "Test credentials and simulated consent only. No real bank data or real money is used."
+              : "Connect through the provider adapter with scoped data access."}
       </p>
       {connection && (
         <p className="mt-3 text-xs leading-5 text-white/35">
