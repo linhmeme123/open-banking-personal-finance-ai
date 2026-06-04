@@ -111,9 +111,6 @@ class BankProviderClient(ABC):
     def create_mock_transaction(self, **values: Any) -> dict[str, Any]:
         raise NotImplementedError("This provider does not expose a mock bank console")
 
-    def generate_mock_transaction(self, external_account_id: str) -> dict[str, Any]:
-        raise NotImplementedError("This provider does not expose a mock bank console")
-
     def get_mock_transaction(self, external_transaction_id: str) -> dict[str, Any] | None:
         raise NotImplementedError("This provider does not expose a mock bank console")
 

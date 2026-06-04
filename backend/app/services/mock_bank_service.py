@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any, Callable
 
 from fastapi import HTTPException
@@ -11,7 +12,7 @@ from app.integrations.banking.registry import (
 )
 from app.services.open_banking_service import process_transaction_webhook
 
-
+#chuyển các object thành chuỗi JSON 
 def serialize(item: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value.isoformat() if hasattr(value, "isoformat") else value
@@ -66,9 +67,63 @@ def create_transaction(db: Session, provider_code: str, **values: Any):
     return serialize(_run_console_operation(lambda: client.create_mock_transaction(**values)))
 
 
-def generate_transaction(db: Session, provider_code: str, external_account_id: str):
+def _get_account(client: BankProviderClient, external_account_id: str) -> dict[str, Any]:
+    accounts = _run_console_operation(client.list_mock_accounts)
+    account = next(
+        (
+            item
+            for item in accounts
+            if item["external_account_id"] == external_account_id
+        ),
+        None,
+    )
+    if not account:
+        raise HTTPException(status_code=404, detail="Mock account not found")
+    return account
+
+
+def _ensure_sufficient_balance(account: dict[str, Any], amount: Decimal, message: str) -> None:
+    if Decimal(amount) > account["balance"]:
+        raise HTTPException(status_code=422, detail=message)
+
+
+def deposit(db: Session, provider_code: str, **values: Any):
     client = _get_mock_client(db, provider_code)
-    return serialize(_run_console_operation(lambda: client.generate_mock_transaction(external_account_id)))
+    values["description"] = "Deposit"
+    values["merchant_name"] = None
+    values["category"] = "transfer"
+    values["direction"] = "income"
+    return serialize(_run_console_operation(lambda: client.create_mock_transaction(**values)))
+
+
+def withdraw(db: Session, provider_code: str, **values: Any):
+    client = _get_mock_client(db, provider_code)
+    account = _get_account(client, values["external_account_id"])
+    _ensure_sufficient_balance(account, values["amount"], "Withdrawal amount cannot exceed current balance")
+
+    values["description"] = "Withdrawal"
+    values["merchant_name"] = None
+    values["category"] = "transfer"
+    values["direction"] = "expense"
+    return serialize(_run_console_operation(lambda: client.create_mock_transaction(**values)))
+
+
+def transfer(db: Session, provider_code: str, **values: Any):
+    client = _get_mock_client(db, provider_code)
+    account = _get_account(client, values["external_account_id"])
+    _ensure_sufficient_balance(account, values["amount"], "Transfer amount cannot exceed current balance")
+
+    note = values.pop("note", None)
+    recipient_account_name = values["recipient_account_name"]
+    recipient_bank_name = values["recipient_bank_name"]
+    recipient_account_number = values["recipient_account_number"]
+    values["description"] = note or f"Transfer to {recipient_account_name}"
+    values["merchant_name"] = f"{recipient_account_name} - {recipient_bank_name}"
+    values["category"] = "transfer"
+    values["direction"] = "expense"
+    values["transfer_type"] = "external"
+    values["recipient_account_number"] = recipient_account_number
+    return serialize(_run_console_operation(lambda: client.create_mock_transaction(**values)))
 
 
 def list_transaction_events(db: Session, provider_code: str, external_transaction_id: str):

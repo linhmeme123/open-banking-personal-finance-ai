@@ -106,9 +106,6 @@ class FakeBankClient(BankProviderClient):
     def create_mock_transaction(self, **values: Any) -> dict[str, Any]:
         return fake_bank_store.create_transaction(self.provider_code, **values)
 
-    def generate_mock_transaction(self, external_account_id: str) -> dict[str, Any]:
-        return fake_bank_store.generate_transaction(self.provider_code, external_account_id)
-
     def get_mock_transaction(self, external_transaction_id: str) -> dict[str, Any] | None:
         return fake_bank_store.get_transaction(self.provider_code, external_transaction_id)
 

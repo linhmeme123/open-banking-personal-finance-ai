@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
-from random import choice
 from uuid import uuid4
 
 
@@ -86,6 +85,10 @@ def create_transaction(
     direction: str,
     category: str | None = None,
     transaction_time: datetime | None = None,
+    recipient_bank_name: str | None = None,
+    recipient_account_number: str | None = None,
+    recipient_account_name: str | None = None,
+    transfer_type: str | None = None,
 ) -> dict:
     _seed(provider_code) if provider_code not in ACCOUNTS else None
     reconciled_amount = abs(amount) if direction == "income" else -abs(amount)
@@ -104,6 +107,15 @@ def create_transaction(
         "webhook_status": "pending",
         "sync_status": "pending",
     }
+    if recipient_bank_name or recipient_account_number or recipient_account_name:
+        transaction.update(
+            {
+                "recipient_bank_name": recipient_bank_name,
+                "recipient_account_number": recipient_account_number,
+                "recipient_account_name": recipient_account_name,
+                "transfer_type": transfer_type,
+            }
+        )
     for account in ACCOUNTS[provider_code]:
         if account["external_account_id"] == external_account_id:
             transaction["balance_before"] = account["balance"]
@@ -121,10 +133,6 @@ def create_transaction(
         f"Balance Updated: {transaction['balance_before']} -> {transaction['balance_after']} {transaction['currency']}",
     )
     return transaction
-
-
-def generate_transaction(provider_code: str, external_account_id: str) -> dict:
-    return create_transaction(provider_code, external_account_id, *choice(TEMPLATES))
 
 
 def get_transaction(provider_code: str, external_transaction_id: str) -> dict | None:

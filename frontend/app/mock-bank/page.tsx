@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, Clock3, ExternalLink, Landmark, ListTree, Loader2, Plus, Radio, RefreshCw, Send, WalletCards, X } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, CheckCircle2, Clock3, ExternalLink, Landmark, ListTree, Loader2, Plus, Radio, RefreshCw, Send, WalletCards, X } from "lucide-react";
 import { Brand } from "@/components/Brand";
 import { ApiError, getApiErrorMessage } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
@@ -12,7 +12,7 @@ import {
   TRANSACTION_CATEGORIES,
   createMockBankAccount,
   createMockBankTransaction,
-  generateMockBankTransaction,
+  depositMockBank,
   getMockBankAccounts,
   getMockBankProviders,
   getMockBankTransactionEvents,
@@ -21,6 +21,8 @@ import {
   MockBankTransaction,
   sendMockBankWebhook,
   syncProvider,
+  transferMockBank,
+  withdrawMockBank,
 } from "@/lib/finance";
 
 function StatusBadge({ value }: { value: string }) {
@@ -42,6 +44,12 @@ export default function MockBankPage() {
   const [description, setDescription] = useState("Highlands Coffee");
   const [merchant, setMerchant] = useState("Highlands Coffee");
   const [amount, setAmount] = useState("65000");
+  const [movementAmount, setMovementAmount] = useState("");
+  const [transferAmount, setTransferAmount] = useState("");
+  const [recipientBankName, setRecipientBankName] = useState("Techcombank");
+  const [recipientAccountNumber, setRecipientAccountNumber] = useState("");
+  const [recipientAccountName, setRecipientAccountName] = useState("");
+  const [transferNote, setTransferNote] = useState("");
   const [direction, setDirection] = useState("expense");
   const [category, setCategory] = useState("");
   const [transactionTime, setTransactionTime] = useState("");
@@ -53,6 +61,16 @@ export default function MockBankPage() {
   const [pushErrors, setPushErrors] = useState<Record<string, string>>({});
   const selectedAccount = accounts.find((account) => account.external_account_id === accountId);
   const selectedProvider = providers.find((provider) => provider.code === providerCode);
+  const parsedMovementAmount = Number(movementAmount);
+  const parsedTransferAmount = Number(transferAmount);
+  const canSubmitMovement = Boolean(accountId) && parsedMovementAmount > 0;
+  const canWithdraw = canSubmitMovement && Boolean(selectedAccount) && parsedMovementAmount <= (selectedAccount?.balance || 0);
+  const canTransfer = Boolean(accountId)
+    && parsedTransferAmount > 0
+    && parsedTransferAmount <= (selectedAccount?.balance || 0)
+    && Boolean(recipientBankName.trim())
+    && Boolean(recipientAccountNumber.trim())
+    && Boolean(recipientAccountName.trim());
 
   async function load(nextProvider = providerCode, nextAccount = accountId) {
     if (!nextProvider) return;
@@ -102,10 +120,54 @@ export default function MockBankPage() {
     }
   }
 
-  async function generate() {
+  function movementPayload() {
+    return {
+      provider_code: providerCode,
+      external_account_id: accountId,
+      amount: parsedMovementAmount,
+    };
+  }
+
+  async function deposit() {
     try {
-      await generateMockBankTransaction(providerCode, accountId);
-      setMessage("Random transaction generated.");
+      await depositMockBank(movementPayload());
+      setMessage("Deposit added to the mock provider. Sync it or push it to Velora.");
+      await load();
+    } catch (error) {
+      setMessage(getApiErrorMessage(error));
+    }
+  }
+
+  async function withdraw() {
+    if (!canWithdraw) {
+      setMessage("Withdrawal amount cannot exceed the current balance.");
+      return;
+    }
+    try {
+      await withdrawMockBank(movementPayload());
+      setMessage("Withdrawal added to the mock provider. Sync it or push it to Velora.");
+      await load();
+    } catch (error) {
+      setMessage(getApiErrorMessage(error));
+    }
+  }
+
+  async function transfer() {
+    if (!canTransfer) {
+      setMessage("Transfer requires recipient details and cannot exceed the current balance.");
+      return;
+    }
+    try {
+      await transferMockBank({
+        provider_code: providerCode,
+        external_account_id: accountId,
+        amount: parsedTransferAmount,
+        recipient_bank_name: recipientBankName.trim(),
+        recipient_account_number: recipientAccountNumber.trim(),
+        recipient_account_name: recipientAccountName.trim(),
+        note: transferNote.trim() || undefined,
+      });
+      setMessage("Transfer added to the mock provider. Sync it or push it to Velora.");
       await load();
     } catch (error) {
       setMessage(getApiErrorMessage(error));
@@ -207,6 +269,64 @@ export default function MockBankPage() {
           </section>
         )}
 
+        <section className="glass-panel grid gap-3 p-4 md:grid-cols-[1fr_auto_auto]">
+          <input
+            className="form-control"
+            min="0"
+            onChange={(event) => setMovementAmount(event.target.value)}
+            placeholder="Amount"
+            type="number"
+            value={movementAmount}
+          />
+          <button className="button-secondary" disabled={!canSubmitMovement} onClick={deposit} type="button">
+            <ArrowDownToLine className="h-4 w-4" aria-hidden="true" />
+            Deposit
+          </button>
+          <button className="button-secondary" disabled={!canWithdraw} onClick={withdraw} type="button">
+            <ArrowUpFromLine className="h-4 w-4" aria-hidden="true" />
+            Withdraw
+          </button>
+        </section>
+
+        <section className="glass-panel grid gap-3 p-4 md:grid-cols-4">
+          <input
+            className="form-control"
+            onChange={(event) => setRecipientBankName(event.target.value)}
+            placeholder="Recipient bank"
+            value={recipientBankName}
+          />
+          <input
+            className="form-control"
+            onChange={(event) => setRecipientAccountNumber(event.target.value)}
+            placeholder="Recipient account number"
+            value={recipientAccountNumber}
+          />
+          <input
+            className="form-control"
+            onChange={(event) => setRecipientAccountName(event.target.value)}
+            placeholder="Recipient name"
+            value={recipientAccountName}
+          />
+          <input
+            className="form-control"
+            min="0"
+            onChange={(event) => setTransferAmount(event.target.value)}
+            placeholder="Amount"
+            type="number"
+            value={transferAmount}
+          />
+          <input
+            className="form-control md:col-span-3"
+            onChange={(event) => setTransferNote(event.target.value)}
+            placeholder="Transfer note"
+            value={transferNote}
+          />
+          <button className="button-secondary" disabled={!canTransfer} onClick={transfer} type="button">
+            <Send className="h-4 w-4" aria-hidden="true" />
+            Transfer
+          </button>
+        </section>
+
         <section className="glass-panel flex flex-wrap gap-3 p-4">
           <input className="form-control min-w-60 flex-1" onChange={(event) => setAccountName(event.target.value)} placeholder="New account name" value={accountName} />
           <button className="button-secondary" disabled={!providerCode || !accountName.trim()} onClick={createAccount} type="button">
@@ -235,10 +355,6 @@ export default function MockBankPage() {
         </section>
 
         <div className="flex flex-wrap gap-2">
-          <button className="button-secondary" disabled={!accountId} onClick={generate} type="button">
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            Generate random
-          </button>
           <button className="button-secondary" disabled={!accountId} onClick={syncToOpenBanking} type="button">
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Sync to Open Banking

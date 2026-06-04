@@ -375,6 +375,87 @@ class MvpFlowTest(unittest.TestCase):
         self.assertIn("transaction_synced", event_types)
         self.assertIn("transaction_categorized", event_types)
 
+    def test_mock_bank_deposit_and_withdraw_update_balance(self):
+        accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
+        account = accounts[0]
+
+        deposited = self.client.post(
+            "/api/mock-bank/deposit",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": account["external_account_id"],
+                "amount": 500000,
+            },
+        )
+        self.assertEqual(deposited.status_code, 200)
+        self.assertEqual(deposited.json()["direction"], "income")
+        self.assertEqual(deposited.json()["amount"], 500000)
+        self.assertEqual(deposited.json()["balance_after"], account["balance"] + 500000)
+
+        withdrawn = self.client.post(
+            "/api/mock-bank/withdraw",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": account["external_account_id"],
+                "amount": 200000,
+            },
+        )
+        self.assertEqual(withdrawn.status_code, 200)
+        self.assertEqual(withdrawn.json()["direction"], "expense")
+        self.assertEqual(withdrawn.json()["amount"], -200000)
+        self.assertEqual(withdrawn.json()["balance_after"], deposited.json()["balance_after"] - 200000)
+
+        overdraft = self.client.post(
+            "/api/mock-bank/withdraw",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": account["external_account_id"],
+                "amount": withdrawn.json()["balance_after"] + 1,
+            },
+        )
+        self.assertEqual(overdraft.status_code, 422)
+
+    def test_mock_bank_transfer_creates_recipient_transaction(self):
+        accounts = self.client.get("/api/mock-bank/accounts?provider_code=VPBANK_MOCK").json()
+        account = accounts[0]
+
+        transferred = self.client.post(
+            "/api/mock-bank/transfer",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": account["external_account_id"],
+                "recipient_bank_name": "Techcombank",
+                "recipient_account_number": "19031234567890",
+                "recipient_account_name": "Nguyen Van A",
+                "amount": 750000,
+                "note": "Dinner split",
+            },
+        )
+        self.assertEqual(transferred.status_code, 200)
+        body = transferred.json()
+        self.assertEqual(body["direction"], "expense")
+        self.assertEqual(body["amount"], -750000)
+        self.assertEqual(body["category"], "transfer")
+        self.assertEqual(body["description"], "Dinner split")
+        self.assertEqual(body["merchant_name"], "Nguyen Van A - Techcombank")
+        self.assertEqual(body["recipient_bank_name"], "Techcombank")
+        self.assertEqual(body["recipient_account_number"], "19031234567890")
+        self.assertEqual(body["recipient_account_name"], "Nguyen Van A")
+        self.assertEqual(body["balance_after"], account["balance"] - 750000)
+
+        overdraft = self.client.post(
+            "/api/mock-bank/transfer",
+            json={
+                "provider_code": "VPBANK_MOCK",
+                "external_account_id": account["external_account_id"],
+                "recipient_bank_name": "Techcombank",
+                "recipient_account_number": "19031234567890",
+                "recipient_account_name": "Nguyen Van A",
+                "amount": body["balance_after"] + 1,
+            },
+        )
+        self.assertEqual(overdraft.status_code, 422)
+
     def test_mock_bank_webhook_creates_local_account_after_connect_without_sync(self):
         headers = self.auth_headers()
         self.connect_mock_provider(headers, "vpbank_mock")

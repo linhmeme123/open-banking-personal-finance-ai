@@ -6,7 +6,8 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.mock_bank import (
     MockBankAccountCreate,
-    MockBankGenerateRequest,
+    MockBankMovementRequest,
+    MockBankTransferRequest,
     MockBankTransactionCreate,
     MockBankWebhookSendRequest,
 )
@@ -46,9 +47,22 @@ def create_transaction(payload: MockBankTransactionCreate, db: Session = Depends
     return mock_bank_service.create_transaction(db, payload.provider_code, **values)
 
 
-@router.post("/transactions/generate")
-def generate_transaction(payload: MockBankGenerateRequest, db: Session = Depends(get_db)):
-    return mock_bank_service.generate_transaction(db, payload.provider_code, payload.external_account_id)
+@router.post("/deposit")
+def deposit(payload: MockBankMovementRequest, db: Session = Depends(get_db)):
+    values = payload.model_dump(exclude={"provider_code"})
+    return mock_bank_service.deposit(db, payload.provider_code, **values)
+
+
+@router.post("/withdraw")
+def withdraw(payload: MockBankMovementRequest, db: Session = Depends(get_db)):
+    values = payload.model_dump(exclude={"provider_code"})
+    return mock_bank_service.withdraw(db, payload.provider_code, **values)
+
+
+@router.post("/transfer")
+def transfer(payload: MockBankTransferRequest, db: Session = Depends(get_db)):
+    values = payload.model_dump(exclude={"provider_code"})
+    return mock_bank_service.transfer(db, payload.provider_code, **values)
 
 
 @router.get("/transactions/{external_transaction_id}/events")

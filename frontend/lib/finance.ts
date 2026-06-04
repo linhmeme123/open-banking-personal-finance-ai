@@ -193,6 +193,10 @@ export type MockBankTransaction = {
   balance_after: number;
   webhook_status: "pending" | "delivered" | "failed";
   sync_status: "pending" | "synced" | "failed";
+  recipient_bank_name?: string | null;
+  recipient_account_number?: string | null;
+  recipient_account_name?: string | null;
+  transfer_type?: string | null;
 };
 
 export type MockBankEvent = {
@@ -242,11 +246,27 @@ export function createMockBankTransaction(body: {
   return apiPost<MockBankTransaction>("/api/mock-bank/transactions", body, undefined, publicApi);
 }
 
-export function generateMockBankTransaction(providerCode: string, externalAccountId: string) {
-  return apiPost<MockBankTransaction>("/api/mock-bank/transactions/generate", {
-    provider_code: providerCode,
-    external_account_id: externalAccountId,
-  }, undefined, publicApi);
+type MockBankMovementBody = {
+  provider_code: string;
+  external_account_id: string;
+  amount: number;
+};
+
+export function depositMockBank(body: MockBankMovementBody) {
+  return apiPost<MockBankTransaction>("/api/mock-bank/deposit", body, undefined, publicApi);
+}
+
+export function withdrawMockBank(body: MockBankMovementBody) {
+  return apiPost<MockBankTransaction>("/api/mock-bank/withdraw", body, undefined, publicApi);
+}
+
+export function transferMockBank(body: MockBankMovementBody & {
+  recipient_bank_name: string;
+  recipient_account_number: string;
+  recipient_account_name: string;
+  note?: string;
+}) {
+  return apiPost<MockBankTransaction>("/api/mock-bank/transfer", body, undefined, publicApi);
 }
 
 export function sendMockBankWebhook(providerCode: string, externalTransactionId: string) {

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MockBankAccountCreate(BaseModel):
@@ -25,9 +25,20 @@ class MockBankTransactionCreate(BaseModel):
     transaction_time: datetime | None = None
 
 
-class MockBankGenerateRequest(BaseModel):
+class MockBankMovementRequest(BaseModel):
     provider_code: str
     external_account_id: str
+    amount: Decimal = Field(gt=0)
+
+
+class MockBankTransferRequest(BaseModel):
+    provider_code: str
+    external_account_id: str
+    recipient_bank_name: str = Field(min_length=1)
+    recipient_account_number: str = Field(min_length=1)
+    recipient_account_name: str = Field(min_length=1)
+    amount: Decimal = Field(gt=0)
+    note: str | None = None
 
 
 class MockBankWebhookSendRequest(BaseModel):
